@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
 	"fmt"
@@ -43,7 +42,7 @@ func main() {
 	wsTargetPort := getEnv("WS_TARGET_PORT", "22")
 
 	log.Println("==================================================================")
-	log.Println("🚀 GOLANG TUNNEL PRO: ENGINE v5.8 DROPBEAR CLEAN STREAM ACTIVE 🔥")
+	log.Println("🚀 GOLANG TUNNEL PRO: ENGINE v5.9 PURE TRANSPARENT CORE ACTIVE 🔥")
 	log.Println("==================================================================")
 
 	listener, err := net.Listen("tcp", ":"+listenPort)
@@ -57,11 +56,11 @@ func main() {
 		if err != nil {
 			continue
 		}
-		go handleCleanStream(conn, sslTargetHost, sslTargetPort, wsTargetHost, wsTargetPort)
+		go handleTransparentStream(conn, sslTargetHost, sslTargetPort, wsTargetHost, wsTargetPort)
 	}
 }
 
-func handleCleanStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
+func handleTransparentStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
 	turboTune(c) 
 	defer c.Close()
 
@@ -74,7 +73,7 @@ func handleCleanStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
 	c.SetReadDeadline(time.Time{})
 	rawPayload := buf[:n]
 
-	// 🛡️ JALUR SSL
+	// 🛡️ JALUR SSL DETECTION
 	if rawPayload[0] == TLS_HANDSHAKE_BYTE {
 		target, err := net.DialTimeout("tcp", sslHost+":"+sslPort, 4*time.Second)
 		if err != nil {
@@ -116,7 +115,7 @@ func handleCleanStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
 		return
 	}
 
-	// Hubungkan ke Dropbear Lokal
+	// Langsung Hubungkan ke Dropbear Lokal
 	sshTarget, err := net.DialTimeout("tcp", wsHost+":"+wsPort, 4*time.Second)
 	if err != nil {
 		return
@@ -124,16 +123,8 @@ func handleCleanStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
 	turboTune(sshTarget)
 	defer sshTarget.Close()
 
-	// 🔥 SUNTIKAN STERILISASI DROPBEAR: 
-	// Cari posisi teks "SSH-" dari payload awal lu. Potong habis semua teks sampah HTTP di depannya!
-	// Dengan begitu, Dropbear di Ubuntu hanya menerima paket biner SSH murni dan tidak akan mutus koneksi lagi.
-	if idx := bytes.Index(rawPayload, []byte("SSH-")); idx != -1 {
-		_, _ = sshTarget.Write(rawPayload[idx:])
-	} else {
-		// Jika lewat Argo Tunnel murni tanpa split kotor di awal, teruskan normal
-		_, _ = sshTarget.Write(rawPayload)
-	}
-
+	// 🔥 BYPASS RADIKAL: Jangan otak-atik data awal di sini lagi! 
+	// Langsung lempar semuanya ke fungsi pipeData agar dialirkan secara asinkron murni.
 	pipeData(c, sshTarget, true)
 }
 
@@ -147,11 +138,10 @@ func pipeData(client, target net.Conn, isWS bool) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Jalur A: HP -> Dropbear (Filter sisa sampah split tengah jalan jika ada)
+	// Jalur A: HP -> Dropbear (Murni Loss Transparan)
 	go func() {
 		defer wg.Done()
 		buf := make([]byte, 65536)
-		first := true
 		for {
 			client.SetReadDeadline(time.Now().Add(120 * time.Second))
 			n, err := client.Read(buf)
@@ -159,17 +149,8 @@ func pipeData(client, target net.Conn, isWS bool) {
 				break
 			}
 			
-			data := buf[:n]
-			
-			// Jika di tengah jalan DarkTunnel lu masih ngirim sisa potongan payload [split]
-			if isWS && first {
-				if idx := bytes.Index(data, []byte("SSH-")); idx != -1 {
-					data = data[idx:]
-					first = false
-				}
-			}
-
-			_, err = target.Write(data)
+			// Kirim data mentah apa adanya. Biarkan Dropbear & DarkTunnel melakukan kinerjanya secara alami.
+			_, err = target.Write(buf[:n])
 			if err != nil {
 				break
 			}
