@@ -11,14 +11,14 @@ const wsTargetHost = process.env.WS_TARGET_HOST || "127.0.0.1";
 const wsTargetPort = process.env.WS_TARGET_PORT || "22";
 
 console.log("==================================================================");
-console.log("⚡ NODEJS TUNNEL PRO: v3.2 LOCK LOW-PING DIRECT ENGINE ⚡");
+console.log("⚡ NODEJS TUNNEL PRO: v3.3 PURE RAW STREAM (LOW-PING LOCK) ⚡");
 console.log("👑 PRIVATE TUNNEL BY: DEDEFATHU 👑");
-console.log("=================================================================="); // 🔥 TYPO SUDAH DI-FIX DI SINI BOS!
+console.log("==================================================================");
 
 const server = net.createServer((clientConn) => {
-    // Kunci TCP NoDelay biar paket gak ngerem sesaat
+    // Paksa socket langsung nembak tanpa jeda buffering Nagle's Algorithm
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 10000);
+    clientConn.setKeepAlive(true, 5000);
 
     let isHandshakeDone = false;
     let targetConn = null;
@@ -29,21 +29,23 @@ const server = net.createServer((clientConn) => {
         if (targetConn) targetConn.destroy();
     };
 
-    // Handler utama JALUR TEKS awal
     clientConn.on('data', function handleTraffic(data) {
         if (!isHandshakeDone) {
             isHandshakeDone = true;
 
             // 1. JALUR SSL MURNI
             if (data[0] === TLS_HANDSHAKE_BYTE) {
-                clientConn.removeListener('data', handleTraffic);
                 targetConn = net.connect({ host: sslTargetHost, port: parseInt(sslTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     targetConn.write(data);
-                    clientConn.pipe(targetConn);
-                    targetConn.pipe(clientConn);
+                    
+                    // Oper manual direct tanpa .pipe()
+                    targetConn.on('data', (tData) => { if (clientConn.writable) clientConn.write(tData); });
+                    clientConn.on('data', (cData) => { if (targetConn.writable) targetConn.write(cData); });
                 });
+                clientConn.removeListener('data', handleTraffic);
                 targetConn.on('error', destroyAll);
+                targetConn.on('close', destroyAll);
                 return;
             }
 
@@ -76,25 +78,32 @@ const server = net.createServer((clientConn) => {
                 targetConn = net.connect({ host: wsTargetHost, port: parseInt(wsTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // Langsung pasang arah balik (Download) ke pipa biner murni
-                    targetConn.pipe(clientConn);
+                    // JALUR BALIK (DOWNLOAD BINER): Direct Manual Oper (Bikin Ping Rata Lantai)
+                    targetConn.on('data', (tData) => {
+                        if (clientConn.writable) clientConn.write(tData);
+                    });
 
                     const idx = data.indexOf("SSH-");
                     if (idx !== -1) {
                         sshHandshakeFound = true;
                         targetConn.write(data.slice(idx));
                         
-                        // 🔥 KUNCI PING KECIL: Copot handler JS total! Oper ke pipa biner C++
+                        // Handshake kelar, copot total saringan teks awal
                         clientConn.removeListener('data', handleTraffic);
-                        clientConn.pipe(targetConn);
+                        
+                        // JALUR UTAMA (UPLOAD BINER): Direct Manual Oper
+                        clientConn.on('data', (cData) => {
+                            if (targetConn.writable) targetConn.write(cData);
+                        });
                     }
                 });
                 targetConn.on('error', destroyAll);
+                targetConn.on('close', destroyAll);
             });
             return;
         }
 
-        // 🧠 PENYARING SAMPAH BRUTAL (Hanya hidup sampai SSH konek)
+        // 🧠 PENYARING SAMPAH ENHANCED (Berjalan sekejap di paket ke-2 atau ke-3)
         if (targetConn && targetConn.writable) {
             if (!sshHandshakeFound) {
                 const idx = data.indexOf("SSH-");
@@ -102,12 +111,15 @@ const server = net.createServer((clientConn) => {
                     sshHandshakeFound = true;
                     targetConn.write(data.slice(idx));
                     
-                    // 🔥 SELESAI TUGAS! Detik ini juga hancurkan filter JS-nya.
-                    // Jalur internet langsung dikunci masuk pipa biner C++ (.pipe)
+                    // 🎉 BANNER SSH KETEMU! Detik ini juga hancurkan filter awal
                     clientConn.removeListener('data', handleTraffic);
-                    clientConn.pipe(targetConn);
+                    
+                    // Kunci jalur biner mentah langsung lempar tanpa birokrasi .pipe()
+                    clientConn.on('data', (cData) => {
+                        if (targetConn.writable) targetConn.write(cData);
+                    });
                 }
-                return; // Hanguskan sisa sampah enhanced
+                return; // Hanguskan sisa kotoran payload enhanced sebelum kata SSH-
             }
         }
     });
