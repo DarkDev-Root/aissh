@@ -6,21 +6,7 @@ PUBLIC_PORT="${PORT:-8080}"
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
-# =====================================================================
-# 🔥 SETUP DROPBEAR DI UBUNTU: Buka Enkripsi Lawas & Ramah Sertifikat
-# =====================================================================
-echo "[*] Membuat direktori kunci Dropbear..."
-mkdir -p /etc/dropbear
-
-echo "[*] Menghasilkan Host Keys Dropbear..."
-if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
-    dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key
-fi
-if [ ! -f /etc/dropbear/dropbear_ecdsa_host_key ]; then
-    dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key
-fi
-
-echo "[*] Mengonfigurasi Banner Dropbear..."
+echo "[*] Mengonfigurasi Server Message Dropbear (Banner Pra-Login)..."
 cat << 'EOF' > /etc/dropbear_banner
 =================================================
                   SELAMAT MENIKMATI
@@ -31,25 +17,41 @@ cat << 'EOF' > /etc/dropbear_banner
 =================================================
 EOF
 
+echo "[*] Mengonfigurasi Respon Server (Pasca-Login)..."
+cat << 'EOF' > /etc/profile.d/99-respon-server.sh
+#!/bin/bash
+clear
+echo -e "\e[1;36m=================================================\e[0m"
+echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
+echo -e "\e[1;36m=================================================\e[0m"
+echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
+echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
+echo -e "\e[1;37m OS           : \e[1;33mUbuntu 22.04 (Dropbear Mode)\e[0m"
+echo -e "\e[1;36m=================================================\e[0m"
+echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
+echo -e "\e[1;36m=================================================\e[0m"
+EOF
+chmod +x /etc/profile.d/99-respon-server.sh
+
 echo "[*] Mengonfigurasi User SSH..."
 if ! id "$USER_NAME" &>/dev/null; then
     useradd -m -s /bin/bash "$USER_NAME"
+    usermod -aG sudo "$USER_NAME"
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai DROPBEAR Server dengan Parameter Kompatibilitas Tinggi..."
-# ✨ SUNTIKAN SAKTI ANTI CONNECTION CLOSED:
-# -K 10 = Mengaktifkan keepalive tiap 10 detik agar jalur tidak gampang mati
-# -I 0  = Mematikan idle timeout (Anti-Disconnect otomatis)
-dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -a -K 10 -I 0 &
+echo "[*] Memulai Dropbear Server di Port Lokal 22 dengan Kunci Sukses Lu..."
+# 🔑 KUNCI SUKSES: Parameter -W 65536 dipertahankan total agar buffer loss!
+/usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536
 
-# 🔥 TAMBAHAN SSL: Buat Sertifikat SSL Stunnel
+# 🔥 TAMBAHAN KESELAMATAN: Generate Sertifikat SSL biar Stunnel mau jalan
 echo "[*] Membuat Sertifikat SSL Stunnel..."
+mkdir -p /etc/stunnel
 openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
     -subj "/C=ID/ST=Jakarta/L=Jakarta/O=RailwaySSH/CN=localhost" \
     -keyout /etc/stunnel/stunnel.pem -out /etc/stunnel/stunnel.pem
 
-echo "[*] Mengonfigurasi Stunnel internal di Port $SSL_INTERNAL_PORT..."
+echo "[*] Membuat konfigurasi Stunnel (internal) di Port $SSL_INTERNAL_PORT..."
 cat <<EOF > /etc/stunnel/stunnel.conf
 pid = /var/run/stunnel.pid
 foreground = yes
@@ -61,6 +63,22 @@ connect = 127.0.0.1:22
 cert = /etc/stunnel/stunnel.pem
 EOF
 
+echo "[*] Menambahkan sesuatu di .bashrc..."
+cat <<'EOF'>> ~/.bashrc
+clear
+R='\e[1;31m'
+G='\e[1;32m'
+C='\e[1;36m'
+N='\e[0m'
+
+alias c='clear'
+alias x='exit'
+alias +x='chmod +x'
+alias cls='clear;ls'
+
+menu
+EOF
+
 echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
 stunnel4 /etc/stunnel/stunnel.conf &
 
@@ -68,12 +86,15 @@ stunnel4 /etc/stunnel/stunnel.conf &
 # 🌐 LAUNCH CLOUDFLARE ARGO TUNNEL (WITH TOKEN STERILIZER)
 # =====================================================================
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
-    echo "[*] Menjalankan Cloudflare Tunnel (Argo)..."
+    echo "[*] Menjalankan Cloudflare Tunnel (Argo) via token..."
+    
+    # 🧼 SUNTIKAN SAKTI: Sterilkan token dari spasi/karakter gaib copy-paste
     CLEAN_TOKEN=$(echo -n "$CF_TUNNEL_TOKEN" | tr -cd '[:print:]' | tr -d '[:space:]')
+    
     cloudflared tunnel run --token "$CLEAN_TOKEN" &
     sleep 2
 else
-    echo "[!] CF_TUNNEL_TOKEN kosong -> Cloudflare Tunnel dilewati."
+    echo "[!] CF_TUNNEL_TOKEN tidak diset -> Cloudflare Tunnel dilewati."
 fi
 
 # 🎨 BANNER STARTUP LOG RAILWAY WARNA-WARNI DITENGAH
@@ -83,7 +104,7 @@ magenta="\e[1;35m"
 green="\e[1;32m"
 reset="\e[0m"
 
-rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + DROPBEAR v6.1 ACTIVE ⚡"
+rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + DROPBEAR v6.5 FULL SPEED ACTIVE ⚡"
 rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 
 paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
@@ -99,6 +120,7 @@ echo -e "${green}===============================================================
 echo -e "${green}[*] Engine listening smoothly on port: ${PUBLIC_PORT}${reset}"
 echo -e "${cyan}==================================================================${reset}"
 
+echo "[*] Memulai GOLANG TURBO TUNNEL ENGINE di Port PUBLIK $PUBLIC_PORT..."
 exec env \
     PORT="$PUBLIC_PORT" \
     SSL_TARGET_HOST="127.0.0.1" \
