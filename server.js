@@ -18,14 +18,14 @@ const magenta = "\033[35m";
 const green = "\033[32m";
 
 console.log(cyan + "==================================================================" + reset);
-console.log(yellow + "⚡ NODEJS TUNNEL PRO: v2.2 FIX LOW-PING ENGINE ACTIVE ⚡" + reset);
+console.log(yellow + "⚡ NODEJS TUNNEL PRO: v2.3 ANTI-NYUNGSEB FLOW CONTROL ⚡" + reset);
 console.log(magenta + "👑 PRIVATE TUNNEL BY: DEDEFATHU 👑" + reset);
 console.log(green + "==================================================================" + reset);
 console.log(green + `[*] Engine listening smoothly on port: ${listenPort}` + reset);
 console.log(cyan + "==================================================================" + reset);
 
 const server = net.createServer((clientConn) => {
-    // 🔥 OPTIMASI OPER DATA KILAT
+    // 🔥 PERLEBAR UKURAN HIGH WATERMARK KERNEL NODEJS (Biar Pipa Gede tapi Teratur)
     clientConn.setNoDelay(true);
     clientConn.setKeepAlive(true, 10000);
 
@@ -33,7 +33,6 @@ const server = net.createServer((clientConn) => {
     let targetConn = null;
     let sshHandshakeFound = false;
 
-    // Timeout awal 5 detik anti-stuck
     clientConn.setTimeout(5000);
 
     const destroyAll = () => {
@@ -44,20 +43,20 @@ const server = net.createServer((clientConn) => {
     clientConn.on('data', (data) => {
         if (!isHandshakeDone) {
             isHandshakeDone = true;
-            clientConn.setTimeout(0); // Reset ke mode loss internetan
+            clientConn.setTimeout(0);
 
             // 1. JALUR SSL
             if (data[0] === TLS_HANDSHAKE_BYTE) {
                 targetConn = net.connect({ host: sslTargetHost, port: parseInt(sslTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     targetConn.write(data);
-                    pipePure(clientConn, targetConn);
+                    setupSmartPipe(clientConn, targetConn);
                 });
                 targetConn.on('error', destroyAll);
                 return;
             }
 
-            // 2. JALUR WEBSOCKET (Nego Handshake Kilat)
+            // 2. JALUR WEBSOCKET
             const reqStr = data.toString('utf8');
             let wsKey = "";
             const lines = reqStr.split("\r\n");
@@ -88,31 +87,38 @@ const server = net.createServer((clientConn) => {
                 targetConn = net.connect({ host: wsTargetHost, port: parseInt(wsTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // Cek jika paket 1 bawa data banner SSH
                     const idx = data.indexOf("SSH-");
                     if (idx !== -1) {
                         sshHandshakeFound = true;
                         targetConn.write(data.slice(idx));
                     }
-                    pipePure(clientConn, targetConn);
+                    setupSmartPipe(clientConn, targetConn);
                 });
                 targetConn.on('error', destroyAll);
             });
             return;
         }
 
-        // 🧠 JALUR UTAMA (HP -> SSH): Gunting Sampah Tanpa Mengubah ke String Teks
+        // 🧠 FILTER SAMPAH ENHANCED DI JALUR A
         if (targetConn && targetConn.writable) {
             if (!sshHandshakeFound) {
                 const idx = data.indexOf("SSH-");
                 if (idx !== -1) {
                     sshHandshakeFound = true;
-                    targetConn.write(data.slice(idx)); // Loloskan dari potongan "SSH-"
+                    const cleanData = data.slice(idx);
+                    
+                    // Kirim dan cek backpressure
+                    const ok = targetConn.write(cleanData);
+                    if (!ok) clientConn.pause(); 
                 }
-                return; // Sampah Enhanced sebelum teks "SSH-" dibuang
+                return;
             }
-            // 🔥 RAW WRITE: Langsung dilempar mentah tanpa diconvert ke string biar ping kecil!
-            targetConn.write(data);
+            
+            // 🔥 SMART WRITE JALUR A (HP -> SERVER): Mencegah RAM Server Meluap
+            const ok = targetConn.write(data);
+            if (!ok) {
+                clientConn.pause(); // Hentikan penerimaan dari HP jika antrean server penuh!
+            }
         }
     });
 
@@ -121,13 +127,28 @@ const server = net.createServer((clientConn) => {
     clientConn.on('timeout', destroyAll);
 });
 
-// 🔄 JALUR SEBALIKNYA (SSH -> HP): DOWNLOAD ENGINE LOW-LATENCY
-function pipePure(client, target) {
+// 🔄 KATUP OTOMATIS JALUR DUA ARAH (ANTI BACKPRESSURE)
+function setupSmartPipe(client, target) {
+    // Kunci Pengaman Jalur A: Buka kembali keran HP jika antrean Server sudah kosong (drain)
+    target.on('drain', () => {
+        client.resume();
+    });
+
+    // Jalur B (SERVER -> HP): Proses Download Brutal
     target.on('data', (data) => {
         if (client.writable) {
-            client.write(data); // Langsung teruskan biner mentah ke HP
+            const ok = client.write(data);
+            if (!ok) {
+                target.pause(); // Hentikan sedotan dari server SSH jika memori HP/jaringan padat!
+            }
         }
     });
+
+    // Kunci Pengaman Jalur B: Buka kembali sedotan server jika HP siap menerima
+    client.on('drain', () => {
+        target.resume();
+    });
+
     target.on('error', () => client.destroy());
     target.on('close', () => client.destroy());
 }
