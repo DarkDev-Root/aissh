@@ -7,14 +7,12 @@ SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
 # =====================================================================
-# 🚀 PURE TURBO KERNEL TUNING: Paksa OS Railway Buka Keran Pipa Maksimal
+# 🚀 PURE TURBO KERNEL TUNING: Buka Keran Pipa Maksimal Level OS
 # =====================================================================
 echo "[*] Tuning Kernel Jaringan Linux..."
-# Perlebar batas maksimal antrean paket di level OS (Anti-Nyungseb Speedtest)
 sysctl -w net.core.somaxconn=10000 2>/dev/null
 sysctl -w net.core.netdev_max_backlog=10000 2>/dev/null
 sysctl -w net.ipv4.tcp_max_syn_backlog=10000 2>/dev/null
-# Set buffer TCP maksimal ke 16MB agar kuat digebuk keroyokan tethering
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
 sysctl -w net.core.wmem_max=16777216 2>/dev/null
 
@@ -54,7 +52,7 @@ EOF
 chmod +x /etc/profile.d/99-respon-server.sh
 
 # =====================================================================
-# 🛠️ PERBAIKAN UTAMA: MODIFIKASI SSHD_CONFIG AGAR TIDAK DROP PAS SPEEDTEST
+# 🛠️ RACIKAN SSHD_CONFIG TURBO + CIPHER LONGGAR (ANTI-PROPOSALS NOT MATCH)
 # =====================================================================
 echo "[*] Membuat Konfigurasi sshd_config Turbo (SPEK BADAK ANTI-TIMEOUT)..."
 cat << 'EOF' > /etc/ssh/sshd_config
@@ -75,16 +73,16 @@ MaxStartups 500:30:1000
 MaxSessions 500
 MaxAuthTries 20
 
-# 🛑 JINAKKAN FITUR ALIVE: Matikan TCPKeepAlive biar gak tabrakan pas Speedtest kencang!
+# 🛑 JINAKKAN FITUR ALIVE
 ClientAliveInterval 0
 ClientAliveCountMax 3
 TCPKeepAlive no
 LoginGraceTime 60
 
-# 🚀 CIPHERS SPEED MENTOK KANAN
-Ciphers aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr
-KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256
-MACs umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+# 🚀 CIPHERS FIX LONGGAR (Biar Langsung Tembus di HTTP Custom Lu!)
+Ciphers aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1
+MACs umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha1,hmac-sha1-96
 EOF
 # =====================================================================
 
@@ -135,14 +133,14 @@ else
     echo "[!] CF_TUNNEL_TOKEN kosong -> Cloudflare Tunnel dilewati."
 fi
 
-# 🎨 BANNER DITENGAH & WARNA-WARNI
+# 🎨 BANNER DITENGAH
 cyan="\e[1;36m"
 yellow="\e[1;33m"
 magenta="\e[1;35m"
 green="\e[1;32m"
 reset="\e[0m"
 
-rawTitle="⚡ NODEJS TUNNEL PRO: FIXED KERNEL SPEEDTEST READY v1.1 ⚡"
+rawTitle="⚡ NODEJS TUNNEL PRO: FIXED CIPHERS & ENHANCED CLEANER v3.1 ⚡"
 rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 
 paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
