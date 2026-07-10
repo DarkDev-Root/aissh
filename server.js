@@ -18,7 +18,7 @@ const server = net.createServer({
 
     let targetConn = null;
     let isWsJalur = false;
-    let firstPacket = true;
+    let filterActive = true; // 🔥 Prangko pengunci saringan
 
     const destroyAll = () => {
         clientConn.destroy();
@@ -40,7 +40,7 @@ const server = net.createServer({
         } else {
             targetHost = WS_TARGET_HOST;
             targetPort = WS_TARGET_PORT;
-            isWsJalur = true; // Kunci pertanda jalur WebSocket kotor
+            isWsJalur = true;
         }
 
         targetConn = net.connect({ 
@@ -51,30 +51,32 @@ const server = net.createServer({
         }, () => {
             targetConn.setNoDelay(true);
             
-            // Kirim byte pertama yang lolos seleksi awal
+            // Kirim byte pertama
             targetConn.write(firstByte);
 
-            // 🚀 JALUR UTAMA HP -> BACKEND (Dengan Detektor Sampah Enhanced)
+            // 🚀 JALUR HP -> BACKEND (Saringan Pintar Anti-Bug)
             clientConn.on('data', (chunk) => {
-                if (isWsJalur) {
+                // Saringan cuma bekerja di awal-awal data masuk
+                if (isWsJalur && filterActive) {
                     const chunkStr = chunk.toString('utf8');
                     
-                    // Jika terdeteksi ampas bawaan payload Enhanced lu bos
                     if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE")) {
                         if (chunkStr.includes("SSH-")) {
                             const idx = chunk.indexOf("SSH-");
-                            chunk = chunk.slice(idx); // Ambil bagian SSH nya aja
+                            chunk = chunk.slice(idx);
+                            filterActive = false; // 😎 SSH ketemu, matikan saringan selamanya!
                         } else {
-                            // Murni ampas teks kotoran HTTP Custom -> BAKAR HINGGA HANGUS!
-                            return; 
+                            return; // Bakar sampah awal
                         }
+                    } else if (chunkStr.includes("SSH-")) {
+                        filterActive = false; // 😎 SSH ketemu tanpa ampas, matikan saringan selamanya!
                     }
                 }
 
                 if (targetConn.writable) targetConn.write(chunk);
             });
 
-            // 🚀 JALUR DOWNLOAD BACKEND -> HP (Full Loss Speed Monster)
+            // 🚀 JALUR BACKEND -> HP
             targetConn.on('data', (chunk) => {
                 if (clientConn.writable) clientConn.write(chunk);
             });
