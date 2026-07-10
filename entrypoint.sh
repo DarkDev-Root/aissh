@@ -1,16 +1,16 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL & NETWORK TWEAK (KERUK RAM MAKSIMAL) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.1 (JEBOL CEKIKAN UPLOAD - PIPING MAKSIMAL) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
 echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (Jebol Batasan Linux)..."
-# Memaksa OS membuka pipa memori jaringan dari standar ke batas maksimal 16MB
-sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216" 2>/dev/null
-sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216" 2>/dev/null
+# Nilai tengah tcp_wmem & tcp_rmem dijebol ke 1048576 (1MB) biar upload plong lepas dari 4Mbps!
+sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216" 2>/dev/null
+sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
 sysctl -w net.core.wmem_max=16777216 2>/dev/null
 sysctl -w net.ipv4.tcp_no_metrics_save=1 2>/dev/null
