@@ -18,14 +18,13 @@ const magenta = "\033[35m";
 const green = "\033[32m";
 
 console.log(cyan + "==================================================================" + reset);
-console.log(yellow + "⚡ NODEJS TUNNEL PRO: v2.0 ULTRA LOW-PING STREAM ACTIVE ⚡" + reset);
+console.log(yellow + "⚡ NODEJS TUNNEL PRO: v2.1 FIXED LOW-PING ULTRA ACTIVE ⚡" + reset);
 console.log(magenta + "👑 PRIVATE TUNNEL BY: DEDEFATHU 👑" + reset);
 console.log(green + "==================================================================" + reset);
 console.log(green + `[*] Engine listening smoothly on port: ${listenPort}` + reset);
 console.log(cyan + "==================================================================" + reset);
 
 const server = net.createServer((clientConn) => {
-    // 🔥 SUNTIKAN TURBO HIGH-SPEED TUNING
     clientConn.setNoDelay(true);
     clientConn.setKeepAlive(true, 10000);
 
@@ -33,29 +32,29 @@ const server = net.createServer((clientConn) => {
     let targetConn = null;
     let sshHandshakeFound = false;
 
-    // Timeout handshake awal tetap 5 detik biar anti-stuck
+    // Timeout handshake awal 5 detik biar responsif
     clientConn.setTimeout(5000);
 
-    // Fungsi pemutus koneksi jika terjadi error
     const destroyAll = () => {
         clientConn.destroy();
         if (targetConn) targetConn.destroy();
     };
 
-    clientConn.on('data', function onHandshakeData(data) {
+    // Kita gunakan penamaan fungsi yang jelas agar bisa dicopot total nanti
+    clientConn.on('data', function handleTraffic(data) {
         if (!isHandshakeDone) {
             isHandshakeDone = true;
-            clientConn.setTimeout(0); // Matikan timeout awal, masuk mode internetan
+            clientConn.setTimeout(0); // Matikan timeout, masuk mode stabil
 
-            // 1. Jalur SSL / TLS
+            // 1. JALUR SSL
             if (data[0] === TLS_HANDSHAKE_BYTE) {
-                clientConn.removeListener('data', onHandshakeData); // Copot listener awal biar gak beban
+                clientConn.removeListener('data', handleTraffic); // Lepas kendali JS instan
                 
                 targetConn = net.connect({ host: sslTargetHost, port: parseInt(sslTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     targetConn.write(data);
                     
-                    // 🔄 JALUR PIPA KILAT (DIRECT CORE PIPE)
+                    // Direct Pipe C++ Native (Low Ping)
                     clientConn.pipe(targetConn);
                     targetConn.pipe(clientConn);
                 });
@@ -63,7 +62,7 @@ const server = net.createServer((clientConn) => {
                 return;
             }
 
-            // 2. Jalur WebSocket (Proses Handshake Teks Instan)
+            // 2. JALUR WEBSOCKET (Bypass Awal)
             const reqStr = data.toString('utf8');
             let wsKey = "";
             const lines = reqStr.split("\r\n");
@@ -94,14 +93,13 @@ const server = net.createServer((clientConn) => {
                 targetConn = net.connect({ host: wsTargetHost, port: parseInt(wsTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // Cek apakah payload pertama langsung bawa banner SSH
+                    // Cek jika kebetulan paket 1 langsung bawa banner SSH
                     const idx = data.indexOf("SSH-");
                     if (idx !== -1) {
-                        targetConn.write(data.slice(idx));
                         sshHandshakeFound = true;
+                        targetConn.write(data.slice(idx));
                         
-                        // Handshake beres! Hapus listener lama dan aktifkan pipa biner C++
-                        clientConn.removeListener('data', onHandshakeData);
+                        clientConn.removeListener('data', handleTraffic);
                         clientConn.pipe(targetConn);
                         targetConn.pipe(clientConn);
                     }
@@ -111,28 +109,48 @@ const server = net.createServer((clientConn) => {
             return;
         }
 
-        // 🧠 FILTER SAMPAH ENHANCED KILAT SEBELUM LOG IN SSH
+        // 🧠 FILTER & MONITORED STREAM BERTAHAP (MENJINAKKAN ENHANCED)
         if (targetConn && targetConn.writable) {
             if (!sshHandshakeFound) {
                 const idx = data.indexOf("SSH-");
                 if (idx !== -1) {
+                    // 🎉 BANNER SSH KETEMU! Potong sampahnya, loloskan data aslinya
                     sshHandshakeFound = true;
                     targetConn.write(data.slice(idx));
                     
-                    // 💥 KUNCI UTAMA LOW-PING: Setelah banner SSH tembus, lepas 
-                    // fungsi JavaScript-nya, langsung oper ke pipa internal C++ (.pipe)
-                    clientConn.removeListener('data', onHandshakeData);
+                    // 🔥 SELESAI TUGAS! Copot total fungsi JS ini, alihkan langsung ke Pipa Native C++
+                    clientConn.removeListener('data', handleTraffic);
                     clientConn.pipe(targetConn);
                     targetConn.pipe(clientConn);
                 }
-                return; // Buang sampah Enhanced
+                // Jika belum ketemu kata "SSH-", semua sisa cicilan sampah Enhanced dibuang di sini
+                return;
             }
+            targetConn.write(data);
         }
     });
 
     clientConn.on('error', destroyAll);
     clientConn.on('close', destroyAll);
     clientConn.on('timeout', destroyAll);
+});
+
+function pipePure(client, target) {
+    // Jalur B: SSH Server -> HP (Hanya mendengarkan arah balik download)
+    target.on('data', (data) => {
+        if (client.writable) client.write(data);
+    });
+    target.on('error', () => client.destroy());
+    target.on('close', () => client.destroy());
+}
+
+// Handler cadangan untuk arah balik sebelum pipa utama dikunci (.pipe)
+server.on('connection', (socket) => {
+    socket.on('ready', () => {
+        if (socket.remoteAddress) {
+            // Memicu kelancaran stream internal Node.js
+        }
+    });
 });
 
 server.listen(listenPort, '0.0.0.0');
