@@ -8,7 +8,7 @@ const WS_TARGET_PORT = 8880;
 
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-console.log(`[mux] Mux Monster Premium Active on Port: ${LISTEN_PORT}`);
+console.log(`[mux] Mux Monster Pipe Active on Port: ${LISTEN_PORT}`);
 
 const server = net.createServer({
     readableHighWaterMark: 1024 * 1024,
@@ -18,7 +18,7 @@ const server = net.createServer({
 
     let targetConn = null;
     let isWsJalur = false;
-    let filterActive = true; // 🔥 Prangko pengunci saringan
+    let filterActive = true;
 
     const destroyAll = () => {
         clientConn.destroy();
@@ -30,8 +30,6 @@ const server = net.createServer({
             clientConn.destroy();
             return;
         }
-
-        let targetHost, targetPort;
 
         if (firstByte[0] === TLS_HANDSHAKE_BYTE) {
             targetHost = SSL_TARGET_HOST;
@@ -50,36 +48,41 @@ const server = net.createServer({
             writableHighWaterMark: 1024 * 1024
         }, () => {
             targetConn.setNoDelay(true);
-            
-            // Kirim byte pertama
             targetConn.write(firstByte);
 
-            // 🚀 JALUR HP -> BACKEND (Saringan Pintar Anti-Bug)
-            clientConn.on('data', (chunk) => {
-                // Saringan cuma bekerja di awal-awal data masuk
-                if (isWsJalur && filterActive) {
-                    const chunkStr = chunk.toString('utf8');
-                    
-                    if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE")) {
-                        if (chunkStr.includes("SSH-")) {
-                            const idx = chunk.indexOf("SSH-");
-                            chunk = chunk.slice(idx);
-                            filterActive = false; // 😎 SSH ketemu, matikan saringan selamanya!
-                        } else {
-                            return; // Bakar sampah awal
+            if (isWsJalur) {
+                // 🚀 PROSES PENYARINGAN PAKET AWAL DARI HP
+                const onDataFilter = (chunk) => {
+                    if (filterActive) {
+                        const chunkStr = chunk.toString('utf8');
+                        if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE")) {
+                            if (chunkStr.includes("SSH-")) {
+                                const idx = chunk.indexOf("SSH-");
+                                chunk = chunk.slice(idx);
+                                filterActive = false;
+                                clientConn.removeListener('data', onDataFilter);
+                                // 🔥 KETIKU SUDAH STERIL, LANGSUNG GABUNGKAN PIPA UTAMA (ANTI-BEBAN)
+                                clientConn.pipe(targetConn);
+                                targetConn.write(chunk);
+                            } else {
+                                return; // Bakar sampah
+                            }
+                        } else if (chunkStr.includes("SSH-")) {
+                            filterActive = false;
+                            clientConn.removeListener('data', onDataFilter);
+                            clientConn.pipe(targetConn);
+                            targetConn.write(chunk);
                         }
-                    } else if (chunkStr.includes("SSH-")) {
-                        filterActive = false; // 😎 SSH ketemu tanpa ampas, matikan saringan selamanya!
                     }
-                }
+                };
+                clientConn.on('data', onDataFilter);
+            } else {
+                // Jalur SSL langsung pakai pipa murni dari awal
+                clientConn.pipe(targetConn);
+            }
 
-                if (targetConn.writable) targetConn.write(chunk);
-            });
-
-            // 🚀 JALUR BACKEND -> HP
-            targetConn.on('data', (chunk) => {
-                if (clientConn.writable) clientConn.write(chunk);
-            });
+            // 🚀 JALUR DOWNLOAD (BACKEND -> HP): Langsung bypass pakai pipa murni
+            targetConn.pipe(clientConn);
         });
 
         targetConn.on('error', destroyAll);
