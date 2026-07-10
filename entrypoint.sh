@@ -7,12 +7,24 @@ SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
 # =====================================================================
+# 🚀 PURE TURBO KERNEL TUNING: Paksa OS Railway Buka Keran Pipa Maksimal
+# =====================================================================
+echo "[*] Tuning Kernel Jaringan Linux..."
+# Perlebar batas maksimal antrean paket di level OS (Anti-Nyungseb Speedtest)
+sysctl -w net.core.somaxconn=10000 2>/dev/null
+sysctl -w net.core.netdev_max_backlog=10000 2>/dev/null
+sysctl -w net.ipv4.tcp_max_syn_backlog=10000 2>/dev/null
+# Set buffer TCP maksimal ke 16MB agar kuat digebuk keroyokan tethering
+sysctl -w net.core.rmem_max=16777216 2>/dev/null
+sysctl -w net.core.wmem_max=16777216 2>/dev/null
+
+# =====================================================================
 # 🔥 SETUP OPENSSH: Pahat Host Keys & Buka Parameter Enkripsi Longgar
 # =====================================================================
 echo "[*] Membuat Host Keys OpenSSH..."
 ssh-keygen -A
 
-# 🎨 BANNER WARNA-WARNI & CENTER LOGIC UNTUK LOGIN TULISAN
+# 🎨 BANNER WARNA-WARNI
 echo "[*] Mengonfigurasi Banner SSH..."
 cat << 'EOF' > /etc/ssh_banner
 =================================================
@@ -34,14 +46,17 @@ echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
 echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
-echo -e "\e[1;37m OS           : \e[1;33mAlpine Linux (Node.js Turbo)\e[0m"
+echo -e "\e[1;37m OS           : \e[1;33mAlpine Linux (Node.js Ultra Turbo)\e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 EOF
 chmod +x /etc/profile.d/99-respon-server.sh
 
-echo "[*] Membuat Konfigurasi sshd_config Turbo (SPEK BADAK ANTI-EOF)..."
+# =====================================================================
+# 🛠️ PERBAIKAN UTAMA: MODIFIKASI SSHD_CONFIG AGAR TIDAK DROP PAS SPEEDTEST
+# =====================================================================
+echo "[*] Membuat Konfigurasi sshd_config Turbo (SPEK BADAK ANTI-TIMEOUT)..."
 cat << 'EOF' > /etc/ssh/sshd_config
 Port 22
 ListenAddress 127.0.0.1
@@ -55,22 +70,23 @@ Banner /etc/ssh_banner
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/ssh/sftp-server
 
-# 🚀 RACIKAN ULTRA SAKTI ANTI-EOF (Siap dihajar spam koneksi tethering brutal)
-MaxStartups 100:30:500
-MaxSessions 100
-MaxAuthTries 10
+# 🚀 RACIKAN MULTI-CLIENT TETHERING
+MaxStartups 500:30:1000
+MaxSessions 500
+MaxAuthTries 20
 
-# 🔥 SUNTIKAN SAKTI ANTI-REKONEK
-ClientAliveInterval 30
-ClientAliveCountMax 99999
-TCPKeepAlive yes
-LoginGraceTime 30
+# 🛑 JINAKKAN FITUR ALIVE: Matikan TCPKeepAlive biar gak tabrakan pas Speedtest kencang!
+ClientAliveInterval 0
+ClientAliveCountMax 3
+TCPKeepAlive no
+LoginGraceTime 60
 
-# 🚀 RACIKAN MULTI-ENKRIPSI: Sekali Klik Langsung Konek + Speed Tetap Mentok Kanan
-Ciphers aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc
-KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1
-MACs umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha1,hmac-sha1-96
+# 🚀 CIPHERS SPEED MENTOK KANAN
+Ciphers aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256
+MACs umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 EOF
+# =====================================================================
 
 echo "[*] Mengonfigurasi User SSH..."
 if ! id "$USER_NAME" &>/dev/null; then
@@ -119,14 +135,14 @@ else
     echo "[!] CF_TUNNEL_TOKEN kosong -> Cloudflare Tunnel dilewati."
 fi
 
-# 🎨 BANNER DITENGAH & WARNA-WARNI UNTUK TAMPILAN STARTUP LOG RAILWAY
+# 🎨 BANNER DITENGAH & WARNA-WARNI
 cyan="\e[1;36m"
 yellow="\e[1;33m"
 magenta="\e[1;35m"
 green="\e[1;32m"
 reset="\e[0m"
 
-rawTitle="⚡ NODEJS TUNNEL PRO: FAST-CONNECT READY v1.0 ACTIVE ⚡"
+rawTitle="⚡ NODEJS TUNNEL PRO: FIXED KERNEL SPEEDTEST READY v1.1 ⚡"
 rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 
 paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
