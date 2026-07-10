@@ -2,14 +2,12 @@ const net = require('net');
 const crypto = require('crypto');
 
 const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-// Mendengarkan di port internal 8880 sesuai operan dari mux
 const LISTEN_PORT = 8880; 
 const TARGET_HOST = process.env.WS_TARGET_HOST || "127.0.0.1";
 const TARGET_PORT = parseInt(process.env.WS_TARGET_PORT || "22");
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 
-console.log(`[ws-proxy] WS proxy jalan di 127.0.0.1:${LISTEN_PORT} -> Dropbear Backend Active`);
+console.log(`[ws-proxy] WS proxy jalan di 127.0.0.1:${LISTEN_PORT} -> Dropbear Anti-RTO Active`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -65,27 +63,23 @@ const server = net.createServer((clientConn) => {
             shasum.update(wsKey + WS_MAGIC);
             const acceptKey = shasum.digest('base64');
 
-            let response = "HTTP/1.1 101 Switching Protocols\r\n" +
-                           "Upgrade: websocket\r\n" +
-                           "Connection: Upgrade\r\n" +
-                           `Sec-WebSocket-Accept: ${acceptKey}\r\n`;
+            let response = "HTTP/1.1 101 Switching Protocols\n" +
+                           "Upgrade: websocket\n" +
+                           "Connection: Upgrade\n" +
+                           `Sec-WebSocket-Accept: ${acceptKey}\n\n`;
             
-            if (headers["sec-websocket-protocol"]) {
-                response += `Sec-WebSocket-Protocol: ${headers["sec-websocket-protocol"]}\r\n`;
-            }
-            response += "\r\n";
             clientConn.write(Buffer.from(response));
         } else {
             clientConn.write(Buffer.from(DEFAULT_RESPONSE));
         }
 
-        // Konek ke SSH / Dropbear
+        // Hubungkan ke Dropbear (Port 22)
         targetConn = net.connect({ host: TARGET_HOST, port: TARGET_PORT }, () => {
             targetConn.setNoDelay(true);
 
             let firstPacket = true;
 
-            // KAJI LOGIKA FILTER PREMIUM MILIK LU BOS
+            // 🚀 JALUR A: HP -> DROPBEAR (Dengan Pengaman Backpressure Anti-Mati)
             clientConn.on('data', (data) => {
                 if (firstPacket) {
                     firstPacket = false;
@@ -94,15 +88,39 @@ const server = net.createServer((clientConn) => {
                             const idx = data.indexOf("SSH-");
                             data = data.slice(idx);
                         } else {
-                            return; // Drop kotoran murni (continue)
+                            return; // Buang sampah murni
                         }
                     }
                 }
-                if (targetConn.writable) targetConn.write(data);
+                
+                if (targetConn.writable) {
+                    // Jika buffer Dropbear penuh, rem dulu bacaan dari HP biar gak luber
+                    const flush = targetConn.write(data);
+                    if (!flush) {
+                        clientConn.pause();
+                    }
+                }
             });
 
+            // Jalankan kembali jika buffer Dropbear sudah plong
+            targetConn.on('drain', () => {
+                clientConn.resume();
+            });
+
+            // 🚀 JALUR B: DROPBEAR -> HP (Paling Krusial Saat Download Kencang)
             targetConn.on('data', (data) => {
-                if (clientConn.writable) clientConn.write(data);
+                if (clientConn.writable) {
+                    // Jika buffer HP penuh karena speedtest kegedean, rem bacaan dari Dropbear
+                    const flush = clientConn.write(data);
+                    if (!flush) {
+                        targetConn.pause();
+                    }
+                }
+            });
+
+            // Jalankan kembali jika buffer HP sudah siap menerima data
+            clientConn.on('drain', () => {
+                targetConn.resume();
             });
         });
 
