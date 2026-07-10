@@ -2,7 +2,6 @@ import asyncio
 import os
 import sys
 
-# Ambil Port Lingkungan dari Railway / Default internal
 PORT = int(os.environ.get("PORT", 8080))
 SSL_HOST = os.environ.get("SSL_TARGET_HOST", "127.0.0.1")
 SSL_PORT = int(os.environ.get("SSL_TARGET_PORT", 2443))
@@ -12,51 +11,59 @@ WS_PORT = int(os.environ.get("WS_TARGET_PORT", 22))
 WS_MAGIC = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 async def pipe(reader, writer, is_upload=False):
-    """ Jembatan pipa data transparan, loss tanpa rem """
+    """ Jembatan pipa transparan - Menjiplak total saringan sakti lu """
     try:
         first = True
         while True:
-            data = await reader.read(65536)
+            data = await reader.read(131072) # Buffer raksasa 128KB anti-lag
             if not data:
                 break
             
-            # 🛡️ LOGIKA SUKSES: Saring teks SSH- hanya pada paket pertama upload
+            # 🛡️ COPY LOGIKA SUKSES LU: Saring kotoran split di awal upload
             if is_upload and first:
                 idx = data.find(b"SSH-")
                 if idx != -1:
                     data = data[idx:]
                     first = False
-            
-            writer.write(data)
-            await writer.drain()
+                    # Tembakkan hanya jika biner SSH- sudah bersih
+                    writer.write(data)
+                    await writer.drain()
+                else:
+                    # 🔥 KUNCI SUKSES: Kalau isinya cuma sampah HTTP split, ABAIKAN/BUANG!
+                    continue
+            else:
+                # Jalur download dan upload lanjutan berjalan super kencang tanpa rem
+                writer.write(data)
+                await writer.drain()
     except Exception:
         pass
     finally:
-        writer.close()
         try:
+            writer.close()
             await writer.wait_closed()
         except Exception:
             pass
 
 async def handle_client(client_reader, client_writer):
-    # Set TCP No Delay pada socket klien untuk performa instan
     sock = client_writer.get_extra_info('socket')
     if sock:
         import socket
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     try:
-        # Mode Sabar otomatis membaca paket handshake awal dari HP
+        # Mode Sabar membaca request awal
         data = await asyncio.wait_for(client_reader.read(65536), timeout=3.0)
     except Exception:
-        client_writer.close()
+        try: client_writer.close()
+        except: pass
         return
 
     if not data:
-        client_writer.close()
+        try: client_writer.close()
+        except: pass
         return
 
-    # 🛡️ JALUR SSL/TLS DETECTION (Menuju Stunnel)
+    # 🛡️ JALUR SSL/TLS DETECTION (Stunnel)
     if data[0] == 0x16:
         try:
             target_reader, target_writer = await asyncio.open_connection(SSL_HOST, SSL_PORT)
@@ -64,15 +71,15 @@ async def handle_client(client_reader, client_writer):
             await target_writer.drain()
             
             await asyncio.gather(
-                pipe(client_reader, target_writer),
-                pipe(target_reader, client_writer)
+                pipe(client_reader, target_writer, is_upload=False),
+                pipe(target_reader, client_writer, is_upload=False)
             )
         except Exception:
             pass
         return
 
-    # 🌐 JALUR WEBSOCKET HANDSHAKE (Menuju Dropbear)
-    if b"Upgrade: websocket" in data or b"upgrade: websocket" in data:
+    # 🌐 JALUR WEBSOCKET HANDSHAKE (Dropbear)
+    if b"upgrade: websocket" in data.lower():
         lines = data.split(b"\r\n")
         ws_key = b""
         for line in lines:
@@ -90,7 +97,7 @@ async def handle_client(client_reader, client_writer):
 
         response = (
             b"HTTP/1.1 101 Switching Protocols\r\n"
-            b"Upgrade: websocket\r\n"
+            b"Upgrade: websocket\033[0m\r\n" # Mengembalikan lem perangko penstabil
             b"Connection: Upgrade\r\n"
             b"Sec-WebSocket-Accept: " + accept_key + b"\r\n\r\n"
         )
@@ -98,24 +105,20 @@ async def handle_client(client_reader, client_writer):
         await client_writer.drain()
 
         try:
-            # Hubungkan langsung ke Dropbear lokal port 22
+            # Hubungkan langsung ke Dropbear lokal
             target_reader, target_writer = await asyncio.open_connection(WS_HOST, WS_PORT)
             
-            # Putar pipa data secara asinkron (Jalur HP->SSH disaring, Jalur SSH->HP loss)
-            await asyncio.gather(
-                pipe(client_reader, target_writer, is_upload=True),
-                pipe(target_reader, client_writer, is_upload=False)
-            )
+            # Eksekusi paralel asinkron mandiri (Anti saling bunuh koneksi)
+            asyncio.create_task(pipe(client_reader, target_writer, is_upload=True))
+            await pipe(target_reader, client_writer, is_upload=False)
         except Exception:
             pass
         return
 
-    client_writer.close()
+    try: client_writer.close()
+    except: pass
 
 async def main():
-    print("==================================================================")
-    print(f"🏎️ PYTHON ASYNC HYPER-ENGINE v1.0 ACTIVE ON PORT {PORT} 🏎️")
-    print("==================================================================")
     server = await asyncio.start_server(handle_client, '0.0.0.0', PORT)
     async with server:
         await server.serve_forever()
