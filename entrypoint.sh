@@ -7,12 +7,12 @@ SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
 # =====================================================================
-# 🔥 SETUP DROPBEAR DI UBUNTU: Super Ringan, Full Speed, Anti-Lag
+# 🔥 SETUP DROPBEAR DI UBUNTU: Buka Enkripsi Lawas & Ramah Sertifikat
 # =====================================================================
 echo "[*] Membuat direktori kunci Dropbear..."
 mkdir -p /etc/dropbear
 
-echo "[*] Menghasilkan Host Keys Dropbear (Jika belum ada)..."
+echo "[*] Menghasilkan Host Keys Dropbear..."
 if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
     dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key
 fi
@@ -37,11 +37,11 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai DROPBEAR Server di Port Lokal 22..."
-# -p 127.0.0.1:22 = mengunci ke jalur internal agar tidak bocor keluar
-# -b = memanggil banner kustom lu
-# -a = mengizinkan port forwarding
-dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -a &
+echo "[*] Memulai DROPBEAR Server dengan Parameter Kompatibilitas Tinggi..."
+# ✨ SUNTIKAN SAKTI ANTI CONNECTION CLOSED:
+# -K 10 = Mengaktifkan keepalive tiap 10 detik agar jalur tidak gampang mati
+# -I 0  = Mematikan idle timeout (Anti-Disconnect otomatis)
+dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -a -K 10 -I 0 &
 
 # 🔥 TAMBAHAN SSL: Buat Sertifikat SSL Stunnel
 echo "[*] Membuat Sertifikat SSL Stunnel..."
@@ -83,7 +83,7 @@ magenta="\e[1;35m"
 green="\e[1;32m"
 reset="\e[0m"
 
-rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + DROPBEAR v5.7 FULL SPEED ACTIVE ⚡"
+rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + DROPBEAR v6.1 ACTIVE ⚡"
 rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 
 paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
