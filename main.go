@@ -44,7 +44,7 @@ func main() {
 	magenta := "\033[35m"
 	green := "\033[32m"
 
-	rawTitle := "⚡ GOLANG TUNNEL PRO: ENGINE v8.0 PROVEN LOGIC MASTERPIECE ⚡"
+	rawTitle := "⚡ GOLANG TUNNEL PRO: ENGINE v8.2 ULTRA-RESPONSE ACTIVE ⚡"
 	rawOwner := "👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 	
 	paddingTitle := (66 - len(rawTitle)) / 2
@@ -160,24 +160,25 @@ func handle(c net.Conn) {
 	defer ssh.Close()
 
 	go ioCopy(ssh, c, true) // Jalur HP -> SSH (Membawa saringan di putaran pertama)
-	ioCopy(c, ssh, false)   // Jalur SSH -> HP (Dengan lem perangko Cloudflare 15 detik)
+	ioCopy(c, ssh, false)   // Jalur SSH -> HP (Dengan lem perangko Cloudflare 10 detik)
 }
 
 func ioCopy(dst, src net.Conn, filter bool) {
-	b := make([]byte, 65536)
+	// 🏎️ MEGA BUFFER: Diperbesar ke 128KB agar tumpukan paket Argo Tunnel muat sekali telan
+	b := make([]byte, 131072) 
 	first := true
 
 	for {
 		if !filter {
-			// 🔥 Ikuti logika sukses lu: Amankan jeda baca ke 15 detik pas sepi
-			_ = src.SetReadDeadline(time.Now().Add(15 * time.Second))
+			// ✨ SUNTIKAN ANTI-LAG: Pasang deadline membaca yang ketat ke 10 detik pas sepi
+			_ = src.SetReadDeadline(time.Now().Add(10 * time.Second))
 		}
 
 		n, err := src.Read(b)
 		
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() && !filter {
-				// Tembak ping sewajarnya tiap 15 detik pas sepi biar jalur tetep hidup
+				// Tetap kirim heartbeat 0x89 0x00 agar terowongan Argo tidak menciut
 				_, _ = dst.Write([]byte{0x89, 0x00})
 				continue
 			}
@@ -188,7 +189,7 @@ func ioCopy(dst, src net.Conn, filter bool) {
 			continue
 		}
 
-		// 🛡️ LOGIKA KERAMAT: Menyaring tulisan "SSH-" pas putaran pertama masuk pipa
+		// 🛡️ PROVEN LOGIC: Saringan "SSH-" di putaran pertama
 		if filter && first {
 			idx := bytes.Index(b[:n], []byte("SSH-"))
 			if idx != -1 { 
@@ -196,6 +197,7 @@ func ioCopy(dst, src net.Conn, filter bool) {
 				first = false 
 			}
 		} else {
+			// 🏎️ TURBO WRITE: Langsung tembak tanpa jeda agar ms langsung mengecil rata kanan
 			_, err = dst.Write(b[:n])
 			if err != nil {
 				return
@@ -203,6 +205,7 @@ func ioCopy(dst, src net.Conn, filter bool) {
 		}
 		
 		if !filter {
+			// Begitu data download mengalir deras, matikan deadline agar speed loss maksimal
 			_ = src.SetReadDeadline(time.Time{})
 		}
 	}
