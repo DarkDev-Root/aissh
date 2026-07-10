@@ -42,7 +42,7 @@ func main() {
 	wsTargetPort := getEnv("WS_TARGET_PORT", "22")
 
 	log.Println("==================================================================")
-	log.Println("🚀 GOLANG TUNNEL PRO: ENGINE v5.9 PURE TRANSPARENT CORE ACTIVE 🔥")
+	log.Println("🚀 GOLANG TUNNEL PRO: ENGINE v6.0 ZERO-DROP CORE ACTIVE 🔥")
 	log.Println("==================================================================")
 
 	listener, err := net.Listen("tcp", ":"+listenPort)
@@ -56,11 +56,11 @@ func main() {
 		if err != nil {
 			continue
 		}
-		go handleTransparentStream(conn, sslTargetHost, sslTargetPort, wsTargetHost, wsTargetPort)
+		go handleZeroDropStream(conn, sslTargetHost, sslTargetPort, wsTargetHost, wsTargetPort)
 	}
 }
 
-func handleTransparentStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
+func handleZeroDropStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string) {
 	turboTune(c) 
 	defer c.Close()
 
@@ -82,7 +82,7 @@ func handleTransparentStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string
 		turboTune(target)
 		defer target.Close()
 		_, _ = target.Write(rawPayload)
-		pipeData(c, target, false)
+		pipeData(c, target, rawPayload, false)
 		return
 	}
 
@@ -115,7 +115,7 @@ func handleTransparentStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string
 		return
 	}
 
-	// Langsung Hubungkan ke Dropbear Lokal
+	// Hubungkan ke Dropbear Lokal
 	sshTarget, err := net.DialTimeout("tcp", wsHost+":"+wsPort, 4*time.Second)
 	if err != nil {
 		return
@@ -123,12 +123,14 @@ func handleTransparentStream(c net.Conn, sslHost, sslPort, wsHost, wsPort string
 	turboTune(sshTarget)
 	defer sshTarget.Close()
 
-	// 🔥 BYPASS RADIKAL: Jangan otak-atik data awal di sini lagi! 
-	// Langsung lempar semuanya ke fungsi pipeData agar dialirkan secara asinkron murni.
-	pipeData(c, sshTarget, true)
+	// 🔥 AMANKAN DATA AWAL: Tembakkan seluruh sisa data awal dari HP langsung ke Dropbear
+	// Biar Dropbear langsung dapet respon dan gak sepihak mutus koneksi lagi!
+	_, _ = sshTarget.Write(rawPayload)
+
+	pipeData(c, sshTarget, rawPayload, true)
 }
 
-func pipeData(client, target net.Conn, isWS bool) {
+func pipeData(client, target net.Conn, initialPayload []byte, isWS bool) {
 	var once sync.Once
 	closeAll := func() {
 		_ = client.Close()
@@ -138,7 +140,7 @@ func pipeData(client, target net.Conn, isWS bool) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Jalur A: HP -> Dropbear (Murni Loss Transparan)
+	// Jalur A: HP -> Dropbear (Loss 100%)
 	go func() {
 		defer wg.Done()
 		buf := make([]byte, 65536)
@@ -149,7 +151,6 @@ func pipeData(client, target net.Conn, isWS bool) {
 				break
 			}
 			
-			// Kirim data mentah apa adanya. Biarkan Dropbear & DarkTunnel melakukan kinerjanya secara alami.
 			_, err = target.Write(buf[:n])
 			if err != nil {
 				break
