@@ -1,8 +1,13 @@
 #!/bin/bash
 
-USER_NAME="${SSH_USER:-jatim}"
-USER_PASS="${SSH_PASSWORD:-jatim}"
+# Mengambil environment variables atau menggunakan nilai default
+USER_NAME="${SSH_USER:-dd}"
+USER_PASS="${SSH_PASSWORD:-dd}"
+
+# Port PUBLIK Railway
 PUBLIC_PORT="${PORT:-8080}"
+
+# Port INTERNAL (Sesuai dengan pemetaan di main.py)
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 
 echo "[*] Mengonfigurasi Server Message Dropbear (Banner Pra-Login)..."
@@ -40,7 +45,9 @@ fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
 echo "[*] Memulai Dropbear Server di Port Lokal 22..."
+# 🔑 TETAPKAN PARAMETER ASLI LU
 /usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536 -K 10 -I 0 &
+sleep 1 # ✨ KEMBALIKAN JEDA 1 DETIK UTAMA LU
 
 echo "[*] Membuat Sertifikat SSL Stunnel..."
 mkdir -p /etc/stunnel
@@ -51,7 +58,7 @@ openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
 echo "[*] Mengonfigurasi Stunnel internal di Port $SSL_INTERNAL_PORT..."
 cat <<EOF > /etc/stunnel/stunnel.conf
 pid = /var/run/stunnel.pid
-foreground = yes
+foreground = no
 debug = 4
 
 [ssh-ssl]
@@ -61,18 +68,22 @@ cert = /etc/stunnel/stunnel.pem
 EOF
 
 echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
-stunnel4 /etc/stunnel/stunnel.conf &
+# 🏎️ SETEL KE BACKGROUND SESUAI FILE SAKTI LU
+stunnel4 /etc/stunnel/stunnel.conf
 
+# --- Argo Tunnel (cloudflared) ---
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
-    echo "[*] Menjalankan Cloudflare Tunnel (Argo)..."
+    echo "[*] Menjalankan Cloudflare Tunnel (Argo) via token..."
     CLEAN_TOKEN=$(echo -n "$CF_TUNNEL_TOKEN" | tr -cd '[:print:]' | tr -d '[:space:]')
     cloudflared tunnel run --token "$CLEAN_TOKEN" &
-    sleep 2
 else
     echo "[!] CF_TUNNEL_TOKEN kosong -> Cloudflare Tunnel dilewati."
 fi
 
-echo "[*] Memulai PYTHON ASYNC ENGINE..."
+# ✨ BERI JEDA SEBENTAR AGAR KERNEL BINDING SEMPURNA SEBELUM PYTHON DIBUKA
+sleep 1
+
+echo "[*] Memulai PYTHON UNIFIED HYPER-ENGINE..."
 exec env \
     PORT="$PUBLIC_PORT" \
     SSL_TARGET_HOST="127.0.0.1" \
