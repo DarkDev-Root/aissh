@@ -6,21 +6,7 @@ PUBLIC_PORT="${PORT:-8080}"
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
-# =====================================================================
-# 🔥 SETUP DROPBEAR DI UBUNTU: Buka Enkripsi Selonggar-longgarnya
-# =====================================================================
-echo "[*] Membuat direktori wajib Dropbear..."
-mkdir -p /etc/dropbear
-
-echo "[*] Menghasilkan Host Keys Dropbear..."
-if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
-    dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key
-fi
-if [ ! -f /etc/dropbear/dropbear_ecdsa_host_key ]; then
-    dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key
-fi
-
-echo "[*] Mengonfigurasi Banner Dropbear..."
+echo "[*] Mengonfigurasi Server Message Dropbear (Banner Pra-Login)..."
 cat << 'EOF' > /etc/dropbear_banner
 =================================================
                   SELAMAT MENIKMATI
@@ -41,7 +27,7 @@ echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
 echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
-echo -e "\e[1;37m OS           : \e[1;33mUbuntu Linux (Dropbear Turbo)\e[0m"
+echo -e "\e[1;37m OS           : \e[1;33mUbuntu Linux (Python Async Mode)\e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
@@ -55,12 +41,7 @@ fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
 echo "[*] Memulai Dropbear Server di Port Lokal 22..."
-# 🔄 CONVERTED: Parameter disesuaikan untuk Dropbear Ubuntu
-# -p 127.0.0.1:22 = mengunci ke jalur internal
-# -b = memanggil banner kustom lu
-# -W 65536 = 🔑 KUNCI SUKSES LU (melonggarkan TCP window size agar trafik loss)
-# -K 10 = Mengirim keepalive tiap 10 detik (Auto-Convert dari ClientAliveInterval)
-# -I 0 = Mematikan idle timeout agar tidak gampang disdisconnect sepihak
+# 🔑 KUNCI SUKSES LU: Parameter -W 65536 dipertahankan total agar buffer loss!
 /usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536 -K 10 -I 0 &
 
 # 🔥 TAMBAHAN SSL: Buat Sertifikat SSL Stunnel
@@ -103,6 +84,7 @@ stunnel4 /etc/stunnel/stunnel.conf &
 
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
     echo "[*] Menjalankan Cloudflare Tunnel (Argo)..."
+    # 🧼 STERILIZER: Membersihkan token otomatis agar tidak pincang akibat spasi gaib
     CLEAN_TOKEN=$(echo -n "$CF_TUNNEL_TOKEN" | tr -cd '[:print:]' | tr -d '[:space:]')
     cloudflared tunnel run --token "$CLEAN_TOKEN" &
     sleep 2
@@ -117,7 +99,7 @@ magenta="\e[1;35m"
 green="\e[1;32m"
 reset="\e[0m"
 
-rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + DROPBEAR CONVERTED ACTIVE ⚡"
+rawTitle="⚡ PYTHON TUNNEL PRO: UBUNTU + DROPBEAR HYPER-ASYNC ACTIVE ⚡"
 rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 
 paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
@@ -133,11 +115,11 @@ echo -e "${green}===============================================================
 echo -e "${green}[*] Engine listening smoothly on port: ${PUBLIC_PORT}${reset}"
 echo -e "${cyan}==================================================================${reset}"
 
-echo "[*] Memulai GOLANG TURBO TUNNEL ENGINE di Port PUBLIK $PUBLIC_PORT..."
+echo "[*] Memulai PYTHON ASYNC ENGINE di Port PUBLIK $PUBLIC_PORT..."
 exec env \
     PORT="$PUBLIC_PORT" \
     SSL_TARGET_HOST="127.0.0.1" \
     SSL_TARGET_PORT="$SSL_INTERNAL_PORT" \
     WS_TARGET_HOST="127.0.0.1" \
     WS_TARGET_PORT="22" \
-    turbo-proxy
+    python3 /app/main.py
