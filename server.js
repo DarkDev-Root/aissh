@@ -11,12 +11,12 @@ const wsTargetHost = process.env.WS_TARGET_HOST || "127.0.0.1";
 const wsTargetPort = process.env.WS_TARGET_PORT || "22";
 
 console.log("==================================================================");
-console.log("⚡ NODEJS TUNNEL PRO: v3.3 PURE RAW STREAM (LOW-PING LOCK) ⚡");
+console.log("⚡ NODEJS TUNNEL PRO: v3.4 ULTRA BYPASS JITTER ACTIVE ⚡");
 console.log("👑 PRIVATE TUNNEL BY: DEDEFATHU 👑");
 console.log("==================================================================");
 
 const server = net.createServer((clientConn) => {
-    // Paksa socket langsung nembak tanpa jeda buffering Nagle's Algorithm
+    // Tweak socket pada level terendah
     clientConn.setNoDelay(true);
     clientConn.setKeepAlive(true, 5000);
 
@@ -39,9 +39,13 @@ const server = net.createServer((clientConn) => {
                     targetConn.setNoDelay(true);
                     targetConn.write(data);
                     
-                    // Oper manual direct tanpa .pipe()
-                    targetConn.on('data', (tData) => { if (clientConn.writable) clientConn.write(tData); });
-                    clientConn.on('data', (cData) => { if (targetConn.writable) targetConn.write(cData); });
+                    // Bypass penulisan biner langsung ke antrean CPU terdepan
+                    targetConn.on('data', (tData) => {
+                        setImmediate(() => { if (clientConn.writable) clientConn.write(tData); });
+                    });
+                    clientConn.on('data', (cData) => {
+                        setImmediate(() => { if (targetConn.writable) targetConn.write(cData); });
+                    });
                 });
                 clientConn.removeListener('data', handleTraffic);
                 targetConn.on('error', destroyAll);
@@ -78,9 +82,11 @@ const server = net.createServer((clientConn) => {
                 targetConn = net.connect({ host: wsTargetHost, port: parseInt(wsTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // JALUR BALIK (DOWNLOAD BINER): Direct Manual Oper (Bikin Ping Rata Lantai)
+                    // 🔥 JALUR BALIK BYPASS: Dorong data dari Dropbear ke HP instan tanpa antre memori
                     targetConn.on('data', (tData) => {
-                        if (clientConn.writable) clientConn.write(tData);
+                        setImmediate(() => {
+                            if (clientConn.writable) clientConn.write(tData);
+                        });
                     });
 
                     const idx = data.indexOf("SSH-");
@@ -88,12 +94,13 @@ const server = net.createServer((clientConn) => {
                         sshHandshakeFound = true;
                         targetConn.write(data.slice(idx));
                         
-                        // Handshake kelar, copot total saringan teks awal
                         clientConn.removeListener('data', handleTraffic);
                         
-                        // JALUR UTAMA (UPLOAD BINER): Direct Manual Oper
+                        // 🔥 JALUR UTAMA BYPASS: Dorong upload data/ping dari HP ke Dropbear instan
                         clientConn.on('data', (cData) => {
-                            if (targetConn.writable) targetConn.write(cData);
+                            setImmediate(() => {
+                                if (targetConn.writable) targetConn.write(cData);
+                            });
                         });
                     }
                 });
@@ -103,7 +110,7 @@ const server = net.createServer((clientConn) => {
             return;
         }
 
-        // 🧠 PENYARING SAMPAH ENHANCED (Berjalan sekejap di paket ke-2 atau ke-3)
+        // 🧠 FILTER PEMBANTAI SAMPAH ENHANCED
         if (targetConn && targetConn.writable) {
             if (!sshHandshakeFound) {
                 const idx = data.indexOf("SSH-");
@@ -111,15 +118,16 @@ const server = net.createServer((clientConn) => {
                     sshHandshakeFound = true;
                     targetConn.write(data.slice(idx));
                     
-                    // 🎉 BANNER SSH KETEMU! Detik ini juga hancurkan filter awal
                     clientConn.removeListener('data', handleTraffic);
                     
-                    // Kunci jalur biner mentah langsung lempar tanpa birokrasi .pipe()
+                    // Ikat langsung ke bypass engine setelah sampah bersih
                     clientConn.on('data', (cData) => {
-                        if (targetConn.writable) targetConn.write(cData);
+                        setImmediate(() => {
+                            if (targetConn.writable) targetConn.write(cData);
+                        });
                     });
                 }
-                return; // Hanguskan sisa kotoran payload enhanced sebelum kata SSH-
+                return; // Bakar sisa kotoran enhanced sebelum SSH-
             }
         }
     });
