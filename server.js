@@ -11,13 +11,12 @@ const wsTargetHost = process.env.WS_TARGET_HOST || "127.0.0.1";
 const wsTargetPort = process.env.WS_TARGET_PORT || "22";
 
 console.log("==================================================================");
-console.log("⚡ NODEJS TUNNEL PRO: v3.1 BRUTAL ENHANCED CLEANER ACTIVE ⚡");
+console.log("⚡ NODEJS TUNNEL PRO: v3.2 LOCK LOW-PING DIRECT ENGINE ⚡");
 console.log("👑 PRIVATE TUNNEL BY: DEDEFATHU 👑");
-console.log("==================================================================");
-console.log(`[*] Engine listening smoothly on port: ${listenPort}`);
-console.log("==================================================================");
+print("==================================================================");
 
 const server = net.createServer((clientConn) => {
+    // Kunci TCP NoDelay biar paket gak ngerem
     clientConn.setNoDelay(true);
     clientConn.setKeepAlive(true, 10000);
 
@@ -30,12 +29,12 @@ const server = net.createServer((clientConn) => {
         if (targetConn) targetConn.destroy();
     };
 
-    // Jalur Utama Data Arah HP -> Server
+    // Handler utama JALUR TEKS awal
     clientConn.on('data', function handleTraffic(data) {
         if (!isHandshakeDone) {
             isHandshakeDone = true;
 
-            // 1. JALUR SSL / TLS
+            // 1. JALUR SSL MURNI
             if (data[0] === TLS_HANDSHAKE_BYTE) {
                 clientConn.removeListener('data', handleTraffic);
                 targetConn = net.connect({ host: sslTargetHost, port: parseInt(sslTargetPort) }, () => {
@@ -45,11 +44,10 @@ const server = net.createServer((clientConn) => {
                     targetConn.pipe(clientConn);
                 });
                 targetConn.on('error', destroyAll);
-                targetConn.on('close', destroyAll);
                 return;
             }
 
-            // 2. JALUR WEBSOCKET (Nego Handshake Upgrade)
+            // 2. JALUR WEBSOCKET (ENHANCED)
             const reqStr = data.toString('utf8');
             let wsKey = "";
             const lines = reqStr.split("\r\n");
@@ -63,9 +61,7 @@ const server = net.createServer((clientConn) => {
                 }
             }
 
-            if (!wsKey) {
-                wsKey = crypto.randomBytes(16).toString('base64');
-            }
+            if (!wsKey) wsKey = crypto.randomBytes(16).toString('base64');
 
             const shasum = crypto.createHash('sha1');
             shasum.update(wsKey + WS_MAGIC);
@@ -80,42 +76,39 @@ const server = net.createServer((clientConn) => {
                 targetConn = net.connect({ host: wsTargetHost, port: parseInt(wsTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // Arah balik (Download dari server ke HP) langsung di-pipe loss total dari awal!
+                    // Langsung buang arah balik (Download) ke pipa biner murni biar gak telat
                     targetConn.pipe(clientConn);
 
-                    // Cek apakah di paket pertama kebetulan langsung nempel banner SSH
                     const idx = data.indexOf("SSH-");
                     if (idx !== -1) {
                         sshHandshakeFound = true;
                         targetConn.write(data.slice(idx));
                         
-                        // Lepas saringan JS, oper ke pipa C++ Native
+                        // 🔥 KUNCI PING KECIL: Copot handler JS total! Oper ke pipa biner C++
                         clientConn.removeListener('data', handleTraffic);
                         clientConn.pipe(targetConn);
                     }
                 });
                 targetConn.on('error', destroyAll);
-                targetConn.on('close', destroyAll);
             });
             return;
         }
 
-        // 🧠 LOGIKA ULTRA CLEANER: Bantai Sampah Enhanced Berapa Pun Jumlah Paketnya
+        // 🧠 PENYARING SAMPAH BRUTAL (Hanya hidup beberapa milidetik sebelum SSH konek)
         if (targetConn && targetConn.writable) {
             if (!sshHandshakeFound) {
                 const idx = data.indexOf("SSH-");
                 if (idx !== -1) {
-                    // 🎉 KETEMU BOS! Amputasi semua sampah di depannya, ambil dari kata "SSH-" ke belakang
                     sshHandshakeFound = true;
                     targetConn.write(data.slice(idx));
                     
-                    // 🔥 SELESAI TUGAS! Detik ini juga hancurkan filter JS-nya
-                    // Aliran Speedtest lu langsung loss 100% masuk pipa Native C++ (.pipe)
+                    // 🔥 SELESAI TUGAS! Detik ini juga hancurkan filter JS-nya.
+                    // Jalur internet lu dikunci langsung ke pipa biner C++ (.pipe)
+                    // Makanya ping-nya bakal lempeng kecil terus kayak awal ngonekin!
                     clientConn.removeListener('data', handleTraffic);
                     clientConn.pipe(targetConn);
                 }
-                // 🛑 SELAMA KATA "SSH-" BELUM KETEMU, SEMUA PAKET DATA DARI HP ADALAH SAMPAH DAN DIBUANG TOTAL DI SINI!
-                return; 
+                return; // Hanguskan sisa sampah enhanced
             }
         }
     });
