@@ -1,20 +1,23 @@
 #!/bin/bash
 
-# Mengambil environment variables atau menggunakan nilai default
 USER_NAME="${SSH_USER:-dd}"
 USER_PASS="${SSH_PASSWORD:-dd}"
-
-# Port PUBLIK Railway
 PUBLIC_PORT="${PORT:-8080}"
-
-# Port INTERNAL (Sesuai dengan pemetaan di main.py)
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
+WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
-echo "[*] Mengonfigurasi Server Message Dropbear (Banner Pra-Login)..."
-cat << 'EOF' > /etc/dropbear_banner
+# =====================================================================
+# 🔥 SETUP OPENSSH: Pahat Host Keys & Buka Parameter Enkripsi Longgar
+# =====================================================================
+echo "[*] Membuat Host Keys OpenSSH..."
+ssh-keygen -A
+
+# 🎨 BANNER WARNA-WARNI & CENTER LOGIC UNTUK LOGIN TULISAN
+echo "[*] Mengonfigurasi Banner SSH..."
+cat << 'EOF' > /etc/ssh_banner
 =================================================
                   SELAMAT MENIKMATI
-      👑 PREMIUM SSH SERVER DROPBEAR modssh 👑   
+      👑 PREMIUM SSH SERVER OPENSSH goalfin 👑   
 =================================================
        Dilarang Torrent / DDOS / Hacking! 
           👑 PRIVATE TUNNEL BY: DEDEFATHU 👑
@@ -31,12 +34,43 @@ echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
 echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
-echo -e "\e[1;37m OS           : \e[1;33mUbuntu Linux (Python Async Mode)\e[0m"
+echo -e "\e[1;37m OS           : \e[1;33mAlpine Linux (Node.js Turbo)\e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 EOF
 chmod +x /etc/profile.d/99-respon-server.sh
+
+echo "[*] Membuat Konfigurasi sshd_config Turbo (SPEK BADAK ANTI-EOF)..."
+cat << 'EOF' > /etc/ssh/sshd_config
+Port 22
+ListenAddress 127.0.0.1
+PermitRootLogin yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+PrintMotd no
+Banner /etc/ssh_banner
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/ssh/sftp-server
+
+# 🚀 RACIKAN ULTRA SAKTI ANTI-EOF (Siap dihajar spam koneksi tethering brutal)
+MaxStartups 100:30:500
+MaxSessions 100
+MaxAuthTries 10
+
+# 🔥 SUNTIKAN SAKTI ANTI-REKONEK
+ClientAliveInterval 30
+ClientAliveCountMax 99999
+TCPKeepAlive yes
+LoginGraceTime 30
+
+# 🚀 RACIKAN MULTI-ENKRIPSI: Sekali Klik Langsung Konek + Speed Tetap Mentok Kanan
+Ciphers aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group1-sha1
+MACs umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha1,hmac-sha1-96
+EOF
 
 echo "[*] Mengonfigurasi User SSH..."
 if ! id "$USER_NAME" &>/dev/null; then
@@ -44,13 +78,11 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai Dropbear Server di Port Lokal 22..."
-# 🔑 TETAPKAN PARAMETER ASLI LU
-/usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536 -K 10 -I 0 &
-sleep 1 # ✨ KEMBALIKAN JEDA 1 DETIK UTAMA LU
+echo "[*] Memulai OpenSSH Server di Port Lokal 22..."
+/usr/sbin/sshd
 
+# 🔥 TAMBAHAN SSL: Buat Sertifikat SSL Stunnel
 echo "[*] Membuat Sertifikat SSL Stunnel..."
-mkdir -p /etc/stunnel
 openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
     -subj "/C=ID/ST=Jakarta/L=Jakarta/O=RailwaySSH/CN=localhost" \
     -keyout /etc/stunnel/stunnel.pem -out /etc/stunnel/stunnel.pem
@@ -58,7 +90,7 @@ openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
 echo "[*] Mengonfigurasi Stunnel internal di Port $SSL_INTERNAL_PORT..."
 cat <<EOF > /etc/stunnel/stunnel.conf
 pid = /var/run/stunnel.pid
-foreground = no
+foreground = yes
 debug = 4
 
 [ssh-ssl]
@@ -67,27 +99,54 @@ connect = 127.0.0.1:22
 cert = /etc/stunnel/stunnel.pem
 EOF
 
-echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
-# 🏎️ SETEL KE BACKGROUND SESUAI FILE SAKTI LU
-stunnel4 /etc/stunnel/stunnel.conf
+echo "[*] Menambahkan alias dan auto-start menu ke .bashrc..."
+cat <<'EOF'>> ~/.bashrc
+clear
+alias c='clear'
+alias x='exit'
+alias +x='chmod +x'
+alias cls='clear;ls'
+EOF
 
-# --- Argo Tunnel (cloudflared) ---
+echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
+stunnel /etc/stunnel/stunnel.conf &
+
+# 🌐 CLOUDFLARE ARGO TUNNEL STARTUP
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
-    echo "[*] Menjalankan Cloudflare Tunnel (Argo) via token..."
-    CLEAN_TOKEN=$(echo -n "$CF_TUNNEL_TOKEN" | tr -cd '[:print:]' | tr -d '[:space:]')
-    cloudflared tunnel run --token "$CLEAN_TOKEN" &
+    echo "[*] Menjalankan Cloudflare Tunnel (Argo)..."
+    cloudflared tunnel run --token "$CF_TUNNEL_TOKEN" &
 else
     echo "[!] CF_TUNNEL_TOKEN kosong -> Cloudflare Tunnel dilewati."
 fi
 
-# ✨ BERI JEDA SEBENTAR AGAR KERNEL BINDING SEMPURNA SEBELUM PYTHON DIBUKA
-sleep 1
+# 🎨 BANNER DITENGAH & WARNA-WARNI UNTUK TAMPILAN STARTUP LOG RAILWAY
+cyan="\e[1;36m"
+yellow="\e[1;33m"
+magenta="\e[1;35m"
+green="\e[1;32m"
+reset="\e[0m"
 
-echo "[*] Memulai PYTHON UNIFIED HYPER-ENGINE..."
+rawTitle="⚡ NODEJS TUNNEL PRO: FAST-CONNECT READY v1.0 ACTIVE ⚡"
+rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
+
+paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
+paddingOwner=$(( (66 - ${#rawOwner}) / 2 ))
+
+centerTitle=$(printf "%${paddingTitle}s" "")$rawTitle
+centerOwner=$(printf "%${paddingOwner}s" "")$rawOwner
+
+echo -e "${cyan}==================================================================${reset}"
+echo -e "${yellow}${centerTitle}${reset}"
+echo -e "${magenta}${centerOwner}${reset}"
+echo -e "${green}==================================================================${reset}"
+echo -e "${green}[*] Engine listening smoothly on port: ${PUBLIC_PORT}${reset}"
+echo -e "${cyan}==================================================================${reset}"
+
+# 🚀 JALANKAN PROXY MENGGUNAKAN NODE.JS
 exec env \
     PORT="$PUBLIC_PORT" \
     SSL_TARGET_HOST="127.0.0.1" \
     SSL_TARGET_PORT="$SSL_INTERNAL_PORT" \
     WS_TARGET_HOST="127.0.0.1" \
     WS_TARGET_PORT="22" \
-    python3 /app/main.py
+    node /server.js
