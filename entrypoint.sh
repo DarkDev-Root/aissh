@@ -7,19 +7,24 @@ SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
 # =====================================================================
-# 🔥 SETUP OPENSSH DI UBUNTU: Pahat Host Keys & Buka Parameter Enkripsi Longgar
+# 🔥 SETUP DROPBEAR DI UBUNTU: Buka Enkripsi Selonggar-longgarnya
 # =====================================================================
-echo "[*] Membuat direktori wajib SSHD Ubuntu..."
-mkdir -p /var/run/sshd
+echo "[*] Membuat direktori wajib Dropbear..."
+mkdir -p /etc/dropbear
 
-echo "[*] Membuat Host Keys OpenSSH..."
-ssh-keygen -A
+echo "[*] Menghasilkan Host Keys Dropbear..."
+if [ ! -f /etc/dropbear/dropbear_rsa_host_key ]; then
+    dropbearkey -t rsa -f /etc/dropbear/dropbear_rsa_host_key
+fi
+if [ ! -f /etc/dropbear/dropbear_ecdsa_host_key ]; then
+    dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key
+fi
 
-echo "[*] Mengonfigurasi Banner SSH..."
-cat << 'EOF' > /etc/ssh_banner
+echo "[*] Mengonfigurasi Banner Dropbear..."
+cat << 'EOF' > /etc/dropbear_banner
 =================================================
                   SELAMAT MENIKMATI
-      👑 PREMIUM SSH SERVER OPENSSH modssh 👑   
+      👑 PREMIUM SSH SERVER DROPBEAR modssh 👑   
 =================================================
        Dilarang Torrent / DDOS / Hacking! 
           👑 PRIVATE TUNNEL BY: DEDEFATHU 👑
@@ -36,39 +41,12 @@ echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
 echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
-echo -e "\e[1;37m OS           : \e[1;33mUbuntu Linux (OpenSSH Turbo)\e[0m"
+echo -e "\e[1;37m OS           : \e[1;33mUbuntu Linux (Dropbear Turbo)\e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 EOF
 chmod +x /etc/profile.d/99-respon-server.sh
-
-echo "[*] Membuat Konfigurasi sshd_config Ramah Injector (Anti-Rekonek)..."
-cat << 'EOF' > /etc/ssh/sshd_config
-Port 22
-ListenAddress 127.0.0.1
-PermitRootLogin yes
-PasswordAuthentication yes
-PermitEmptyPasswords no
-ChallengeResponseAuthentication no
-UsePAM yes
-PrintMotd no
-Banner /etc/ssh_banner
-AcceptEnv LANG LC_*
-# 🔄 CONVERTED: Jalur SFTP disesuaikan ke struktur internal Ubuntu
-Subsystem sftp /usr/lib/openssh/sftp-server
-
-# 🔥 SUNTIKAN SAKTI ANTI-REKONEK: Paksa OpenSSH Jaga Jalur Tetap Hidup
-ClientAliveInterval 10
-ClientAliveCountMax 99999
-TCPKeepAlive yes
-LoginGraceTime 0
-
-# 🔥 JALUR SAKTI: Buka paksa semua kecocokan proposal enkripsi lawas & enhanced
-KexAlgorithms +diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1
-Ciphers +aes128-cbc,3des-cbc,aes128-ctr,aes192-ctr,aes256-ctr
-MACs +hmac-sha1,hmac-sha1-96
-EOF
 
 echo "[*] Mengonfigurasi User SSH..."
 if ! id "$USER_NAME" &>/dev/null; then
@@ -76,8 +54,14 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai OpenSSH Server di Port Lokal 22..."
-/usr/sbin/sshd
+echo "[*] Memulai Dropbear Server di Port Lokal 22..."
+# 🔄 CONVERTED: Parameter disesuaikan untuk Dropbear Ubuntu
+# -p 127.0.0.1:22 = mengunci ke jalur internal
+# -b = memanggil banner kustom lu
+# -W 65536 = 🔑 KUNCI SUKSES LU (melonggarkan TCP window size agar trafik loss)
+# -K 10 = Mengirim keepalive tiap 10 detik (Auto-Convert dari ClientAliveInterval)
+# -I 0 = Mematikan idle timeout agar tidak gampang disdisconnect sepihak
+/usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536 -K 10 -I 0 &
 
 # 🔥 TAMBAHAN SSL: Buat Sertifikat SSL Stunnel
 echo "[*] Membuat Sertifikat SSL Stunnel..."
@@ -115,12 +99,10 @@ menu
 EOF
 
 echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
-# 🔄 CONVERTED: Menggunakan stunnel4 bawaan paket manager Ubuntu apt
 stunnel4 /etc/stunnel/stunnel.conf &
 
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
     echo "[*] Menjalankan Cloudflare Tunnel (Argo)..."
-    # 🧼 STERILIZER: Membersihkan token otomatis agar tidak pincang akibat spasi gaib
     CLEAN_TOKEN=$(echo -n "$CF_TUNNEL_TOKEN" | tr -cd '[:print:]' | tr -d '[:space:]')
     cloudflared tunnel run --token "$CLEAN_TOKEN" &
     sleep 2
@@ -135,7 +117,7 @@ magenta="\e[1;35m"
 green="\e[1;32m"
 reset="\e[0m"
 
-rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + OPENSSH CONVERTED ACTIVE ⚡"
+rawTitle="⚡ GOLANG TUNNEL PRO: UBUNTU + DROPBEAR CONVERTED ACTIVE ⚡"
 rawOwner="👑 PRIVATE TUNNEL BY: DEDEFATHU 👑"
 
 paddingTitle=$(( (66 - ${#rawTitle}) / 2 ))
