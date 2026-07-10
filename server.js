@@ -18,13 +18,14 @@ const magenta = "\033[35m";
 const green = "\033[32m";
 
 console.log(cyan + "==================================================================" + reset);
-console.log(yellow + "⚡ NODEJS TUNNEL PRO: v2.1 FIXED LOW-PING ULTRA ACTIVE ⚡" + reset);
+console.log(yellow + "⚡ NODEJS TUNNEL PRO: v2.2 FIX LOW-PING ENGINE ACTIVE ⚡" + reset);
 console.log(magenta + "👑 PRIVATE TUNNEL BY: DEDEFATHU 👑" + reset);
 console.log(green + "==================================================================" + reset);
 console.log(green + `[*] Engine listening smoothly on port: ${listenPort}` + reset);
 console.log(cyan + "==================================================================" + reset);
 
 const server = net.createServer((clientConn) => {
+    // 🔥 OPTIMASI OPER DATA KILAT
     clientConn.setNoDelay(true);
     clientConn.setKeepAlive(true, 10000);
 
@@ -32,7 +33,7 @@ const server = net.createServer((clientConn) => {
     let targetConn = null;
     let sshHandshakeFound = false;
 
-    // Timeout handshake awal 5 detik biar responsif
+    // Timeout awal 5 detik anti-stuck
     clientConn.setTimeout(5000);
 
     const destroyAll = () => {
@@ -40,29 +41,23 @@ const server = net.createServer((clientConn) => {
         if (targetConn) targetConn.destroy();
     };
 
-    // Kita gunakan penamaan fungsi yang jelas agar bisa dicopot total nanti
-    clientConn.on('data', function handleTraffic(data) {
+    clientConn.on('data', (data) => {
         if (!isHandshakeDone) {
             isHandshakeDone = true;
-            clientConn.setTimeout(0); // Matikan timeout, masuk mode stabil
+            clientConn.setTimeout(0); // Reset ke mode loss internetan
 
             // 1. JALUR SSL
             if (data[0] === TLS_HANDSHAKE_BYTE) {
-                clientConn.removeListener('data', handleTraffic); // Lepas kendali JS instan
-                
                 targetConn = net.connect({ host: sslTargetHost, port: parseInt(sslTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     targetConn.write(data);
-                    
-                    // Direct Pipe C++ Native (Low Ping)
-                    clientConn.pipe(targetConn);
-                    targetConn.pipe(clientConn);
+                    pipePure(clientConn, targetConn);
                 });
                 targetConn.on('error', destroyAll);
                 return;
             }
 
-            // 2. JALUR WEBSOCKET (Bypass Awal)
+            // 2. JALUR WEBSOCKET (Nego Handshake Kilat)
             const reqStr = data.toString('utf8');
             let wsKey = "";
             const lines = reqStr.split("\r\n");
@@ -93,39 +88,30 @@ const server = net.createServer((clientConn) => {
                 targetConn = net.connect({ host: wsTargetHost, port: parseInt(wsTargetPort) }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // Cek jika kebetulan paket 1 langsung bawa banner SSH
+                    // Cek jika paket 1 bawa data banner SSH
                     const idx = data.indexOf("SSH-");
                     if (idx !== -1) {
                         sshHandshakeFound = true;
                         targetConn.write(data.slice(idx));
-                        
-                        clientConn.removeListener('data', handleTraffic);
-                        clientConn.pipe(targetConn);
-                        targetConn.pipe(clientConn);
                     }
+                    pipePure(clientConn, targetConn);
                 });
                 targetConn.on('error', destroyAll);
             });
             return;
         }
 
-        // 🧠 FILTER & MONITORED STREAM BERTAHAP (MENJINAKKAN ENHANCED)
+        // 🧠 JALUR UTAMA (HP -> SSH): Gunting Sampah Tanpa Mengubah ke String Teks
         if (targetConn && targetConn.writable) {
             if (!sshHandshakeFound) {
                 const idx = data.indexOf("SSH-");
                 if (idx !== -1) {
-                    // 🎉 BANNER SSH KETEMU! Potong sampahnya, loloskan data aslinya
                     sshHandshakeFound = true;
-                    targetConn.write(data.slice(idx));
-                    
-                    // 🔥 SELESAI TUGAS! Copot total fungsi JS ini, alihkan langsung ke Pipa Native C++
-                    clientConn.removeListener('data', handleTraffic);
-                    clientConn.pipe(targetConn);
-                    targetConn.pipe(clientConn);
+                    targetConn.write(data.slice(idx)); // Loloskan dari potongan "SSH-"
                 }
-                // Jika belum ketemu kata "SSH-", semua sisa cicilan sampah Enhanced dibuang di sini
-                return;
+                return; // Sampah Enhanced sebelum teks "SSH-" dibuang
             }
+            // 🔥 RAW WRITE: Langsung dilempar mentah tanpa diconvert ke string biar ping kecil!
             targetConn.write(data);
         }
     });
@@ -135,22 +121,15 @@ const server = net.createServer((clientConn) => {
     clientConn.on('timeout', destroyAll);
 });
 
+// 🔄 JALUR SEBALIKNYA (SSH -> HP): DOWNLOAD ENGINE LOW-LATENCY
 function pipePure(client, target) {
-    // Jalur B: SSH Server -> HP (Hanya mendengarkan arah balik download)
     target.on('data', (data) => {
-        if (client.writable) client.write(data);
+        if (client.writable) {
+            client.write(data); // Langsung teruskan biner mentah ke HP
+        }
     });
     target.on('error', () => client.destroy());
     target.on('close', () => client.destroy());
 }
-
-// Handler cadangan untuk arah balik sebelum pipa utama dikunci (.pipe)
-server.on('connection', (socket) => {
-    socket.on('ready', () => {
-        if (socket.remoteAddress) {
-            // Memicu kelancaran stream internal Node.js
-        }
-    });
-});
 
 server.listen(listenPort, '0.0.0.0');
