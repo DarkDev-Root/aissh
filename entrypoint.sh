@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.4 (ALPINE COMPATIBLE CRYPTO OPENING) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.5 (ALPINE OPENSSH COMPATIBLE CRYPTO) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
-echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (Upload/Download Plong)..."
+echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (1MB Default)..."
 sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
@@ -24,18 +24,8 @@ openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
     -subj "/C=ID/ST=Jakarta/L=Jakarta/O=RailwaySSH/CN=localhost" \
     -keyout /etc/stunnel/stunnel.pem -out /etc/stunnel/stunnel.pem
 
-# Fix permission agar user stunnel Alpine tidak memicu crash crash/Permission Denied
 chown -R stunnel:stunnel /etc/stunnel /var/run/stunnel
 chmod 600 /etc/stunnel/stunnel.pem
-
-echo "[*] Mengonfigurasi Server Message Dropbear..."
-cat << 'EOF' > /etc/dropbear_banner
-=================================================
-             PREMIUM SSH SERVER DROPBEAR         
-=================================================
-       Dilarang Torrent / DDOS / Hacking!        
-=================================================
-EOF
 
 echo "[*] Mengonfigurasi User SSH (Alpine Mode)..."
 if ! id "$USER_NAME" &>/dev/null; then
@@ -44,10 +34,32 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai Dropbear Server di Port Lokal 22 (Buka Kunci Algoritma Jadul)..."
-mkdir -p /etc/dropbear
-# 🔥 MODIFIKASI EMAS: Ditambahkan parameter -A untuk membuka paksa KEX sha1 bawaan HTTP Custom!
-/usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536 -A +diffie-hellman-group-exchange-sha1,+diffie-hellman-group14-sha1
+# 🔑 FIX EMAS: KONFIGURASI OPENSSH BIAR SAMA PERSIS DENGAN CONFIG YANK TEMBUS
+echo "[*] Menyiapkan Host Keys untuk OpenSSH..."
+ssh-keygen -A
+
+echo "[*] Membuat konfigurasi khusus OpenSSH (Buka Gerbang Kax/Ciphers Lama)..."
+cat << 'EOF' > /etc/ssh/sshd_config
+Port 22
+ListenAddress 127.0.0.1
+PermitRootLogin yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM no
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/ssh/sftp-server
+
+# 🔥 Buka paksa algoritma jadul agar HTTP Custom bisa jabat tangan dengan sukses
+KexAlgorithms +diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
+Ciphers +aes256-ctr,aes128-ctr
+MACs +hmac-sha1
+EOF
+
+echo "[*] Memulai OpenSSH Server di Port Lokal 22..."
+/usr/sbin/sshd
 
 echo "[*] Membuat konfigurasi Stunnel..."
 cat <<EOF > /etc/stunnel/stunnel.conf
