@@ -1,6 +1,6 @@
 FROM alpine:3.20
 
-# 1. Install runtime and tools needed in Alpine
+# 1. Install OpenSSH Server dan runtime tools lainnya di Alpine
 RUN apk update && apk add --no-cache \
     stunnel \
     openssl \
@@ -9,15 +9,16 @@ RUN apk update && apk add --no-cache \
     bash \
     nodejs \
     npm \
-    dropbear
+    openssh-server \
+    openssh-client
 
-# 2. Install cloudflared (Argo Tunnel) for Linux AMD64
+# 2. Install cloudflared (Argo Tunnel) untuk Linux AMD64
 RUN curl -fsSL -o /usr/local/bin/cloudflared \
     https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
     && chmod +x /usr/local/bin/cloudflared
 
 # 3. Create necessary application directories
-RUN mkdir -p /var/run/dropbear /var/run/stunnel /etc/dropbear /etc/stunnel
+RUN mkdir -p /var/run/sshd /var/run/stunnel /etc/stunnel
 
 # 4. Copy main entrypoint scripting
 COPY entrypoint.sh /entrypoint.sh
