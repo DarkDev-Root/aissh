@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.5 (ALPINE OPENSSH COMPATIBLE CRYPTO) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.6 (ALPINE OPENSSH + BANNER PELANGI ELITE) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
@@ -34,11 +34,27 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-# 🔑 FIX EMAS: KONFIGURASI OPENSSH BIAR SAMA PERSIS DENGAN CONFIG YANK TEMBUS
+# 🌈 RACIKAN BANNER PELANGI PREMIUM UNTUK HTTP CUSTOM
+echo "[*] Membuat Banner Pelangi untuk OpenSSH..."
+# Menggunakan format ANSI color code agar HTTP Custom membaca teks berwarna-warni
+cat << 'EOF' > /etc/ssh/ssh_banner
+[1;31m==================================================[0m
+[1;35m               SELAMAT MENIKMATI 👑               [0m
+[1;33m              SSH SERVER RAILWAY MOD              [0m
+[1;32m==================================================[0m
+[1;36m SPESIFIKASI:                                     [0m
+[1;34m 🔹 NODE JS MULTIPLEXER                           [0m
+[1;35m 🔹 OS LINUX ALPINE SPEK RAMPING                  [0m
+[1;31m 🔹 OPEN SSH SERVER HIGH COMPATIBILITY            [0m
+[1;32m==================================================[0m
+[1;36m powered by : d e d e f a t h u                 [0m
+[1;31m==================================================[0m
+EOF
+
 echo "[*] Menyiapkan Host Keys untuk OpenSSH..."
 ssh-keygen -A
 
-echo "[*] Membuat konfigurasi khusus OpenSSH (Buka Gerbang Kax/Ciphers Lama)..."
+echo "[*] Membuat konfigurasi khusus OpenSSH..."
 cat << 'EOF' > /etc/ssh/sshd_config
 Port 22
 ListenAddress 127.0.0.1
@@ -52,7 +68,10 @@ PrintMotd no
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/ssh/sftp-server
 
-# 🔥 Buka paksa algoritma jadul agar HTTP Custom bisa jabat tangan dengan sukses
+# 🔥 Sambungkan file banner yang barusan kita buat agar muncul pas konek
+Banner /etc/ssh/ssh_banner
+
+# Buka paksa algoritma jadul agar HTTP Custom bisa jabat tangan dengan sukses
 KexAlgorithms +diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
 Ciphers +aes256-ctr,aes128-ctr
 MACs +hmac-sha1
