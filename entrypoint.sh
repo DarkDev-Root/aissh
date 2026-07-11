@@ -1,28 +1,34 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.2 (ALPINE TWEAK MAKSIMAL - PLONG UPLOAD) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.4 (ALPINE COMPATIBLE CRYPTO OPENING) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
-echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (Upload & Download 1MB Default)..."
+echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (Upload/Download Plong)..."
 sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
 sysctl -w net.core.wmem_max=16777216 2>/dev/null
-sysctl -w net.ipv4.tcp_no_metrics_save=1 2>/dev/null
-sysctl -w net.ipv4.tcp_moderate_rcvbuf=1 2>/dev/null
 
-# Mengambil environment variables atau menggunakan nilai default dd milik lu bos
 USER_NAME="${SSH_USER:-dd}"
 USER_PASS="${SSH_PASSWORD:-dd}"
-
 PUBLIC_PORT="${PORT:-8080}"
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 
-echo "[*] Mengonfigurasi Server Message Dropbear (Banner Pra-Login)..."
+echo "[*] Membuat sertifikat SSL Stunnel dinamis..."
+mkdir -p /etc/stunnel /var/run/stunnel
+openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
+    -subj "/C=ID/ST=Jakarta/L=Jakarta/O=RailwaySSH/CN=localhost" \
+    -keyout /etc/stunnel/stunnel.pem -out /etc/stunnel/stunnel.pem
+
+# Fix permission agar user stunnel Alpine tidak memicu crash crash/Permission Denied
+chown -R stunnel:stunnel /etc/stunnel /var/run/stunnel
+chmod 600 /etc/stunnel/stunnel.pem
+
+echo "[*] Mengonfigurasi Server Message Dropbear..."
 cat << 'EOF' > /etc/dropbear_banner
 =================================================
              PREMIUM SSH SERVER DROPBEAR         
@@ -31,40 +37,26 @@ cat << 'EOF' > /etc/dropbear_banner
 =================================================
 EOF
 
-echo "[*] Mengonfigurasi Respon Server (Pasca-Login)..."
-cat << 'EOF' > /etc/profile.d/99-respon-server.sh
-#!/bin/bash
-clear
-echo -e "\e[1;36m=================================================\e[0m"
-echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
-echo -e "\e[1;36m=================================================\e[0m"
-echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
-echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
-echo -e "\e[1;37m OS           : \e[1;33mAlpine Linux (All-In-One Pipe Mode)\e[0m"
-echo -e "\e[1;36m=================================================\e[0m"
-echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
-echo -e "\e[1;36m=================================================\e[0m"
-EOF
-chmod +x /etc/profile.d/99-respon-server.sh
-
-echo "[*] Mengonfigurasi User SSH (Gaya Alpine)..."
+echo "[*] Mengonfigurasi User SSH (Alpine Mode)..."
 if ! id "$USER_NAME" &>/dev/null; then
-    # -D = Jangan minta password interaktif saat pembuatan user awal
-    # -s = Set default shell ke bash
     adduser -D -s /bin/bash "$USER_NAME"
     echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai Dropbear Server di Port Lokal 22 (Alpine)..."
-# Menggunakan biner dropbear bawaan Alpine di /usr/sbin/
-/usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536
+echo "[*] Memulai Dropbear Server di Port Lokal 22 (Buka Kunci Algoritma Jadul)..."
+mkdir -p /etc/dropbear
+# 🔥 MODIFIKASI EMAS: Ditambahkan parameter -A untuk membuka paksa KEX sha1 bawaan HTTP Custom!
+/usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536 -A +diffie-hellman-group-exchange-sha1,+diffie-hellman-group14-sha1
 
-echo "[*] Membuat konfigurasi Stunnel di Port $SSL_INTERNAL_PORT..."
+echo "[*] Membuat konfigurasi Stunnel..."
 cat <<EOF > /etc/stunnel/stunnel.conf
 pid = /var/run/stunnel.pid
 foreground = yes
 debug = 4
+chroot = /var/run/stunnel
+setuid = stunnel
+setgid = stunnel
 
 [ssh-ssl]
 accept = 127.0.0.1:$SSL_INTERNAL_PORT
@@ -80,19 +72,16 @@ alias x='exit'
 alias cls='clear;ls'
 menu
 EOF
-# Hubungkan bashrc Alpine agar user dd otomatis mengeksekusi script saat login
 echo "source /etc/bash.bashrc" >> /home/"$USER_NAME"/.bashrc
 
-echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
+echo "[*] Memulai Stunnel..."
 stunnel /etc/stunnel/stunnel.conf &
 
 # --- Argo Tunnel (cloudflared) ---
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
     echo "[*] Menjalankan Cloudflare Tunnel..."
     cloudflared tunnel run --url "http://127.0.0.1:$PUBLIC_PORT" --token "$CF_TUNNEL_TOKEN" &
-else
-    echo "[!] CF_TUNNEL_TOKEN tidak diset -> Cloudflare Tunnel dilewati."
 fi
 
-echo "[*] Memulai All-In-One Node.js Muxer Monster v6.0..."
+echo "[*] Memulai All-In-One Node.js Muxer Monster v7.0..."
 exec env PORT="$PUBLIC_PORT" SSL_TARGET_HOST="127.0.0.1" SSL_TARGET_PORT="$SSL_INTERNAL_PORT" node /server.js
