@@ -1,14 +1,13 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.1 (JEBOL CEKIKAN UPLOAD - PIPING MAKSIMAL) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.2 (ALPINE TWEAK MAKSIMAL - PLONG UPLOAD) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
-echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (Jebol Batasan Linux)..."
-# Nilai tengah tcp_wmem & tcp_rmem dijebol ke 1048576 (1MB) biar upload plong lepas dari 4Mbps!
+echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (Upload & Download 1MB Default)..."
 sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
@@ -16,16 +15,12 @@ sysctl -w net.core.wmem_max=16777216 2>/dev/null
 sysctl -w net.ipv4.tcp_no_metrics_save=1 2>/dev/null
 sysctl -w net.ipv4.tcp_moderate_rcvbuf=1 2>/dev/null
 
-# Mengambil environment variables atau menggunakan nilai default
+# Mengambil environment variables atau menggunakan nilai default dd milik lu bos
 USER_NAME="${SSH_USER:-dd}"
 USER_PASS="${SSH_PASSWORD:-dd}"
 
-# Port PUBLIK (yang di-arahkan Railway TCP Proxy ke sini)
 PUBLIC_PORT="${PORT:-8080}"
-
-# Port INTERNAL, tidak diekspos keluar, hanya dipakai antar-proses di dalam container
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
-WS_INTERNAL_PORT="${WS_INTERNAL_PORT:-8880}"
 
 echo "[*] Mengonfigurasi Server Message Dropbear (Banner Pra-Login)..."
 cat << 'EOF' > /etc/dropbear_banner
@@ -45,27 +40,27 @@ echo -e "\e[1;32m       [✓] BERHASIL TERHUBUNG KE SERVER!         \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;37m Username     : \e[1;33m$USER\e[0m"
 echo -e "\e[1;37m Waktu Server : \e[1;33m$(date)\e[0m"
-echo -e "\e[1;37m OS           : \e[1;33mUbuntu 22.04 (Node.js Muxer Monster Mode)\e[0m"
+echo -e "\e[1;37m OS           : \e[1;33mAlpine Linux (All-In-One Pipe Mode)\e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 echo -e "\e[1;31m   TETAP PATUHI RULES SERVER AGAR TIDAK BANNED   \e[0m"
 echo -e "\e[1;36m=================================================\e[0m"
 EOF
 chmod +x /etc/profile.d/99-respon-server.sh
 
-echo "[*] Mengonfigurasi User SSH..."
+echo "[*] Mengonfigurasi User SSH (Gaya Alpine)..."
 if ! id "$USER_NAME" &>/dev/null; then
-    useradd -m -s /bin/bash "$USER_NAME"
-    usermod -aG sudo "$USER_NAME"
+    # -D = Jangan minta password interaktif saat pembuatan user awal
+    # -s = Set default shell ke bash
+    adduser -D -s /bin/bash "$USER_NAME"
+    echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-echo "[*] Memulai Dropbear Server di Port Lokal 22..."
-# -p 127.0.0.1:22 = Hanya merespon internal (aman lewat proxy)
-# -b /etc/dropbear_banner = Memasang banner pra-login
-# -W 65536 = Trik premium memaksimalkan buffer size agar speed download ngacir
+echo "[*] Memulai Dropbear Server di Port Lokal 22 (Alpine)..."
+# Menggunakan biner dropbear bawaan Alpine di /usr/sbin/
 /usr/sbin/dropbear -p 127.0.0.1:22 -b /etc/dropbear_banner -W 65536
 
-echo "[*] Membuat konfigurasi Stunnel (internal) di Port $SSL_INTERNAL_PORT..."
+echo "[*] Membuat konfigurasi Stunnel di Port $SSL_INTERNAL_PORT..."
 cat <<EOF > /etc/stunnel/stunnel.conf
 pid = /var/run/stunnel.pid
 foreground = yes
@@ -78,37 +73,26 @@ cert = /etc/stunnel/stunnel.pem
 EOF
 
 echo "[*] Menambahkan sesuatu di .bashrc..."
-cat <<'EOF'>> ~/.bashrc
+cat <<'EOF'>> /etc/bash.bashrc
 clear
-R='\e[1;31m'
-G='\e[1;32m'
-C='\e[1;36m'
-N='\e[0m'
-
 alias c='clear'
 alias x='exit'
-alias +x='chmod +x'
 alias cls='clear;ls'
-
 menu
 EOF
+# Hubungkan bashrc Alpine agar user dd otomatis mengeksekusi script saat login
+echo "source /etc/bash.bashrc" >> /home/"$USER_NAME"/.bashrc
 
-echo "[*] Memulai Stunnel4 (internal, port $SSL_INTERNAL_PORT)..."
-stunnel4 /etc/stunnel/stunnel.conf &
+echo "[*] Memulai Stunnel (internal, port $SSL_INTERNAL_PORT)..."
+stunnel /etc/stunnel/stunnel.conf &
 
-echo "[*] Memulai WebSocket Proxy Node.js Spek Monster (internal, port $WS_INTERNAL_PORT)..."
-WS_TARGET_HOST="127.0.0.1" WS_TARGET_PORT="22" node /ws-proxy.js &
-
-# --- Argo Tunnel (cloudflared) Jalur Utama Muxer ---
+# --- Argo Tunnel (cloudflared) ---
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
-    echo "[*] Menjalankan Cloudflare Tunnel (Argo) langsung ke Gerbang Muxer..."
+    echo "[*] Menjalankan Cloudflare Tunnel..."
     cloudflared tunnel run --url "http://127.0.0.1:$PUBLIC_PORT" --token "$CF_TUNNEL_TOKEN" &
 else
     echo "[!] CF_TUNNEL_TOKEN tidak diset -> Cloudflare Tunnel dilewati."
 fi
 
-echo "[*] Memulai Node.js Multiplexer di Port PUBLIK $PUBLIC_PORT..."
-exec env \
-    PORT="$PUBLIC_PORT" \
-    SSL_TARGET_HOST="127.0.0.1" SSL_TARGET_PORT="$SSL_INTERNAL_PORT" \
-    node /server.js
+echo "[*] Memulai All-In-One Node.js Muxer Monster v6.0..."
+exec env PORT="$PUBLIC_PORT" SSL_TARGET_HOST="127.0.0.1" SSL_TARGET_PORT="$SSL_INTERNAL_PORT" node /server.js
