@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.7 (ALPINE OPENSSH + BANNER CLEAN REGULAR) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.8 (ALPINE COMPATIBLE + AUTO-MENU CONSOLE) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
@@ -12,6 +12,10 @@ sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
 sysctl -w net.core.wmem_max=16777216 2>/dev/null
+
+# 🛠️ FIX EMAS 1: Jembatan Tiruan agar perintah useradd/userdel Ubuntu dikenali di Alpine
+ln -sf /usr/sbin/adduser /usr/sbin/useradd 2>/dev/null
+ln -sf /usr/sbin/deluser /usr/sbin/userdel 2>/dev/null
 
 USER_NAME="${SSH_USER:-dd}"
 USER_PASS="${SSH_PASSWORD:-dd}"
@@ -34,7 +38,6 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-# 💎 FIX BANNER: Teks Polosan Rapi dan Simetris Khusus Log HTTP Custom
 echo "[*] Membuat Banner Rapi untuk OpenSSH..."
 cat << 'EOF' > /etc/ssh/ssh_banner
 ==================================================
@@ -67,10 +70,8 @@ PrintMotd no
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/ssh/sftp-server
 
-# Sambungkan file banner yang bersih ke OpenSSH
 Banner /etc/ssh/ssh_banner
 
-# Buka paksa algoritma jadul agar HTTP Custom bisa jabat tangan dengan sukses
 KexAlgorithms +diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
 Ciphers +aes256-ctr,aes128-ctr
 MACs +hmac-sha1
@@ -94,14 +95,21 @@ connect = 127.0.0.1:22
 cert = /etc/stunnel/stunnel.pem
 EOF
 
-echo "[*] Menambahkan sesuatu di .bashrc..."
-cat <<'EOF'>> /etc/bash.bashrc
+# 🛠️ FIX EMAS 2: Pasang Auto-Menu di ROOT & USER dd agar pas buka console langsung jalan!
+echo "[*] Mengonfigurasi shortcut dan auto-run menu..."
+cat <<'EOF' > /etc/bash.bashrc
 clear
 alias c='clear'
 alias x='exit'
 alias cls='clear;ls'
-menu
+# Panggil menu otomatis saat login interaktif bash
+if [ -f /usr/local/bin/menu ]; then
+    menu
+fi
 EOF
+
+# Tembak profil root dan user dd agar membaca konfigurasi bashrc di atas
+echo "source /etc/bash.bashrc" >> /root/.bashrc
 echo "source /etc/bash.bashrc" >> /home/"$USER_NAME"/.bashrc
 
 echo "[*] Memulai Stunnel..."
