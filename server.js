@@ -10,10 +10,10 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-// Buffer raksasa 2MB khusus menangani ujung speedtest upload yang super padat
-const BUFFER_SIZE = 2 * 1024 * 1024; 
+// Buffer di-lock di 512KB (Sweet spot stabilitas RAM VPS & Speedtest)
+const BUFFER_SIZE = 512 * 1024; 
 
-console.log(`[monster-mux] ALL-IN-ONE ULTRA SPEED v7.9 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v8.0 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -35,12 +35,12 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 120000); // 2 Menit keepalive penuh demi kebal RTO
+    clientConn.setKeepAlive(true, 30000);
 
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
-    let packetCounter = 0; 
+    let queueBuffers = []; 
     let backendReady = false;
 
     const destroyAll = () => {
@@ -48,21 +48,7 @@ const server = net.createServer({
         if (targetConn) targetConn.destroy();
     };
 
-    // 🔥 LOGIKA PAMUNGKAS: Pindah ke jalur C++ Native Pipe setelah Fase Bahaya Jabat Tangan Lewat
-    const activateUltraFastPipe = () => {
-        if (!targetConn || !clientConn.writable || !targetConn.writable) return;
-        
-        // Hapus penanganan data manual javascript agar CPU fokus penuh
-        clientConn.removeAllListeners('data');
-        
-        // Gabungkan kedua socket menggunakan internal stream piping bawaan Node.js
-        clientConn.pipe(targetConn);
-        targetConn.pipe(clientConn);
-    };
-
     clientConn.on('data', (chunk) => {
-        packetCounter++;
-
         if (!firstPacketRead) {
             firstPacketRead = true;
             
@@ -77,7 +63,6 @@ const server = net.createServer({
                     targetConn.setNoDelay(true);
                     targetConn.write(chunk);
                     backendReady = true;
-                    activateUltraFastPipe();
                 });
             } else {
                 isWsJalur = true;
@@ -120,25 +105,38 @@ const server = net.createServer({
                 }, () => {
                     targetConn.setNoDelay(true);
                     backendReady = true;
+                    
+                    if (queueBuffers.length > 0) {
+                        for (let qChunk of queueBuffers) {
+                            if (targetConn.writable) targetConn.write(qChunk);
+                        }
+                        queueBuffers = [];
+                    }
                 });
             }
 
             targetConn.on('data', (bChunk) => {
-                // Jika sudah fase stabil, biarkan pipa native yang urus data balik
-                if (packetCounter > 3) return;
-                if (clientConn.writable) clientConn.write(bChunk);
+                if (clientConn.writable) {
+                    if (!clientConn.write(bChunk)) targetConn.pause();
+                }
             });
+
+            targetConn.on('drain', () => { clientConn.resume(); });
+            clientConn.on('drain', () => { targetConn.resume(); });
 
             targetConn.on('error', destroyAll);
             targetConn.on('close', destroyAll);
             return;
         }
 
+        // 🚀 PROSES ROUTING DATA DATA SUSULAN (JALUR WEBSOCKET MURNI STABIL)
         if (isWsJalur) {
             let cleanChunk = chunk;
 
-            // Saringan diperketat hanya pada masa kritis paket ke-2 dan ke-3
-            if (packetCounter <= 3) {
+            // 🔥 LOGIKA PARSING SELAMAT: Saringan teks HANYA boleh menyentuh paket kecil (di bawah 1024 byte)
+            // Di awal koneksi, ampas HTTP enhanced selalu berukuran sangat kecil (< 500 byte). 
+            // Pas speedtest upload, ukuran paket biner melonjak drastis (> 1400 byte), sehingga otomatis aman dari saringan teks!
+            if (chunk.length < 1024) {
                 const chunkStr = chunk.toString('utf8');
                 if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
                     if (chunkStr.includes("SSH-")) {
@@ -146,21 +144,21 @@ const server = net.createServer({
                     } else if (chunkStr.includes("\x53\x53\x48")) {
                         cleanChunk = chunk.slice(chunk.indexOf(Buffer.from([0x53, 0x53, 0x48])));
                     } else {
-                        return; 
+                        return; // Ampas HTTP dibuang
                     }
                 }
             }
 
-            if (backendReady && targetConn.writable) {
-                targetConn.write(cleanChunk);
-                
-                // 🔥 KICK START: Paket ke-3 sukses dikirim? Langsung oper total ke Native Pipe!
-                if (packetCounter >= 3) {
-                    setImmediate(() => activateUltraFastPipe());
+            if (!backendReady) {
+                queueBuffers.push(cleanChunk);
+            } else {
+                if (targetConn.writable) {
+                    if (!targetConn.write(cleanChunk)) clientConn.pause();
                 }
             }
         } else {
-            if (backendReady && targetConn.writable) targetConn.write(chunk);
+            if (!backendReady) queueBuffers.push(chunk);
+            else if (targetConn.writable) targetConn.write(chunk);
         }
     });
 
