@@ -10,10 +10,11 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-// Buffer di-lock di 512KB (Sweet spot stabilitas RAM VPS & Speedtest)
+// Menggunakan ukuran buffer standard MTU tinggi agar I/O seimbang
 const BUFFER_SIZE = 512 * 1024; 
+const CHUNK_STEP = 16 * 1024; // Potongan internal 16KB untuk kestabilan upload akhir
 
-console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v8.0 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ALL-IN-ONE HYBRID BOOSTER v7.8 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -35,11 +36,12 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 30000);
+    clientConn.setKeepAlive(true, 60000); // Naikkan ke 60 detik untuk mencegah timeout akhir
 
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
+    let packetCounter = 0; 
     let queueBuffers = []; 
     let backendReady = false;
 
@@ -48,7 +50,32 @@ const server = net.createServer({
         if (targetConn) targetConn.destroy();
     };
 
+    // LOGIC BARU: Mengirim data secara bertahap (Sub-Chunking) untuk mencegah kemacetan di Dropbear
+    const safeWriteToBackend = (dataChunk) => {
+        if (!targetConn || !targetConn.writable) return;
+
+        // Jika ukuran paket terlalu besar saat puncak upload, potong kecil-kecil
+        if (dataChunk.length > CHUNK_STEP) {
+            let offset = 0;
+            while (offset < dataChunk.length) {
+                const end = Math.min(offset + CHUNK_STEP, dataChunk.length);
+                const subChunk = dataChunk.slice(offset, end);
+                
+                if (!targetConn.write(subChunk)) {
+                    clientConn.pause();
+                }
+                offset += CHUNK_STEP;
+            }
+        } else {
+            if (!targetConn.write(dataChunk)) {
+                clientConn.pause();
+            }
+        }
+    };
+
     clientConn.on('data', (chunk) => {
+        packetCounter++;
+
         if (!firstPacketRead) {
             firstPacketRead = true;
             
@@ -108,7 +135,7 @@ const server = net.createServer({
                     
                     if (queueBuffers.length > 0) {
                         for (let qChunk of queueBuffers) {
-                            if (targetConn.writable) targetConn.write(qChunk);
+                            safeWriteToBackend(qChunk);
                         }
                         queueBuffers = [];
                     }
@@ -117,26 +144,29 @@ const server = net.createServer({
 
             targetConn.on('data', (bChunk) => {
                 if (clientConn.writable) {
-                    if (!clientConn.write(bChunk)) targetConn.pause();
+                    if (!clientConn.write(bChunk)) {
+                        targetConn.pause();
+                    }
                 }
             });
 
-            targetConn.on('drain', () => { clientConn.resume(); });
-            clientConn.on('drain', () => { targetConn.resume(); });
+            // Auto-Flush RAM/Buffer saat socket siap menerima data lagi
+            targetConn.on('drain', () => { 
+                setImmediate(() => clientConn.resume()); 
+            });
+            clientConn.on('drain', () => { 
+                setImmediate(() => targetConn.resume()); 
+            });
 
             targetConn.on('error', destroyAll);
             targetConn.on('close', destroyAll);
             return;
         }
 
-        // 🚀 PROSES ROUTING DATA DATA SUSULAN (JALUR WEBSOCKET MURNI STABIL)
         if (isWsJalur) {
             let cleanChunk = chunk;
 
-            // 🔥 LOGIKA PARSING SELAMAT: Saringan teks HANYA boleh menyentuh paket kecil (di bawah 1024 byte)
-            // Di awal koneksi, ampas HTTP enhanced selalu berukuran sangat kecil (< 500 byte). 
-            // Pas speedtest upload, ukuran paket biner melonjak drastis (> 1400 byte), sehingga otomatis aman dari saringan teks!
-            if (chunk.length < 1024) {
+            if (packetCounter <= 3) {
                 const chunkStr = chunk.toString('utf8');
                 if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
                     if (chunkStr.includes("SSH-")) {
@@ -144,7 +174,7 @@ const server = net.createServer({
                     } else if (chunkStr.includes("\x53\x53\x48")) {
                         cleanChunk = chunk.slice(chunk.indexOf(Buffer.from([0x53, 0x53, 0x48])));
                     } else {
-                        return; // Ampas HTTP dibuang
+                        return; 
                     }
                 }
             }
@@ -152,13 +182,14 @@ const server = net.createServer({
             if (!backendReady) {
                 queueBuffers.push(cleanChunk);
             } else {
-                if (targetConn.writable) {
-                    if (!targetConn.write(cleanChunk)) clientConn.pause();
-                }
+                safeWriteToBackend(cleanChunk);
             }
         } else {
-            if (!backendReady) queueBuffers.push(chunk);
-            else if (targetConn.writable) targetConn.write(chunk);
+            if (!backendReady) {
+                queueBuffers.push(chunk);
+            } else {
+                if (targetConn.writable) targetConn.write(chunk);
+            }
         }
     });
 
