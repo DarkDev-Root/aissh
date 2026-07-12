@@ -10,11 +10,10 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-// Menggunakan ukuran buffer standard MTU tinggi agar I/O seimbang
-const BUFFER_SIZE = 512 * 1024; 
-const CHUNK_STEP = 16 * 1024; // Potongan internal 16KB untuk kestabilan upload akhir
+// Buffer raksasa 2MB khusus menangani ujung speedtest upload yang super padat
+const BUFFER_SIZE = 2 * 1024 * 1024; 
 
-console.log(`[monster-mux] ALL-IN-ONE HYBRID BOOSTER v7.8 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ALL-IN-ONE ULTRA SPEED v7.9 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -36,13 +35,12 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 60000); // Naikkan ke 60 detik untuk mencegah timeout akhir
+    clientConn.setKeepAlive(true, 120000); // 2 Menit keepalive penuh demi kebal RTO
 
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
     let packetCounter = 0; 
-    let queueBuffers = []; 
     let backendReady = false;
 
     const destroyAll = () => {
@@ -50,27 +48,16 @@ const server = net.createServer({
         if (targetConn) targetConn.destroy();
     };
 
-    // LOGIC BARU: Mengirim data secara bertahap (Sub-Chunking) untuk mencegah kemacetan di Dropbear
-    const safeWriteToBackend = (dataChunk) => {
-        if (!targetConn || !targetConn.writable) return;
-
-        // Jika ukuran paket terlalu besar saat puncak upload, potong kecil-kecil
-        if (dataChunk.length > CHUNK_STEP) {
-            let offset = 0;
-            while (offset < dataChunk.length) {
-                const end = Math.min(offset + CHUNK_STEP, dataChunk.length);
-                const subChunk = dataChunk.slice(offset, end);
-                
-                if (!targetConn.write(subChunk)) {
-                    clientConn.pause();
-                }
-                offset += CHUNK_STEP;
-            }
-        } else {
-            if (!targetConn.write(dataChunk)) {
-                clientConn.pause();
-            }
-        }
+    // 🔥 LOGIKA PAMUNGKAS: Pindah ke jalur C++ Native Pipe setelah Fase Bahaya Jabat Tangan Lewat
+    const activateUltraFastPipe = () => {
+        if (!targetConn || !clientConn.writable || !targetConn.writable) return;
+        
+        // Hapus penanganan data manual javascript agar CPU fokus penuh
+        clientConn.removeAllListeners('data');
+        
+        // Gabungkan kedua socket menggunakan internal stream piping bawaan Node.js
+        clientConn.pipe(targetConn);
+        targetConn.pipe(clientConn);
     };
 
     clientConn.on('data', (chunk) => {
@@ -90,6 +77,7 @@ const server = net.createServer({
                     targetConn.setNoDelay(true);
                     targetConn.write(chunk);
                     backendReady = true;
+                    activateUltraFastPipe();
                 });
             } else {
                 isWsJalur = true;
@@ -132,30 +120,13 @@ const server = net.createServer({
                 }, () => {
                     targetConn.setNoDelay(true);
                     backendReady = true;
-                    
-                    if (queueBuffers.length > 0) {
-                        for (let qChunk of queueBuffers) {
-                            safeWriteToBackend(qChunk);
-                        }
-                        queueBuffers = [];
-                    }
                 });
             }
 
             targetConn.on('data', (bChunk) => {
-                if (clientConn.writable) {
-                    if (!clientConn.write(bChunk)) {
-                        targetConn.pause();
-                    }
-                }
-            });
-
-            // Auto-Flush RAM/Buffer saat socket siap menerima data lagi
-            targetConn.on('drain', () => { 
-                setImmediate(() => clientConn.resume()); 
-            });
-            clientConn.on('drain', () => { 
-                setImmediate(() => targetConn.resume()); 
+                // Jika sudah fase stabil, biarkan pipa native yang urus data balik
+                if (packetCounter > 3) return;
+                if (clientConn.writable) clientConn.write(bChunk);
             });
 
             targetConn.on('error', destroyAll);
@@ -166,6 +137,7 @@ const server = net.createServer({
         if (isWsJalur) {
             let cleanChunk = chunk;
 
+            // Saringan diperketat hanya pada masa kritis paket ke-2 dan ke-3
             if (packetCounter <= 3) {
                 const chunkStr = chunk.toString('utf8');
                 if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
@@ -179,17 +151,16 @@ const server = net.createServer({
                 }
             }
 
-            if (!backendReady) {
-                queueBuffers.push(cleanChunk);
-            } else {
-                safeWriteToBackend(cleanChunk);
+            if (backendReady && targetConn.writable) {
+                targetConn.write(cleanChunk);
+                
+                // 🔥 KICK START: Paket ke-3 sukses dikirim? Langsung oper total ke Native Pipe!
+                if (packetCounter >= 3) {
+                    setImmediate(() => activateUltraFastPipe());
+                }
             }
         } else {
-            if (!backendReady) {
-                queueBuffers.push(chunk);
-            } else {
-                if (targetConn.writable) targetConn.write(chunk);
-            }
+            if (backendReady && targetConn.writable) targetConn.write(chunk);
         }
     });
 
