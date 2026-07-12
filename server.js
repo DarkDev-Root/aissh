@@ -10,10 +10,9 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-// Buffer besar agar speedtest upload mulus tanpa bottleneck
 const BUFFER_SIZE = 1024 * 1024; 
 
-console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.4 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.5 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -35,15 +34,12 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 30000); // Naikkan ke 30 detik untuk stabilitas
+    clientConn.setKeepAlive(true, 30000);
 
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
     
-    // Tanda penunjuk status jabat tangan SSH
-    let sshHandshakeDone = false; 
-
     let queueBuffers = []; 
     let backendReady = false;
 
@@ -120,10 +116,6 @@ const server = net.createServer({
             }
 
             targetConn.on('data', (bChunk) => {
-                // Saat dropbear mengirim balik banner SSH-2.0..., tandai jabat tangan dimulai
-                if (bChunk.toString('utf8').includes("SSH-")) {
-                    sshHandshakeDone = true; 
-                }
                 if (clientConn.writable) clientConn.write(bChunk);
             });
             targetConn.on('error', destroyAll);
@@ -131,35 +123,32 @@ const server = net.createServer({
             return;
         }
 
-        // 🚀 PROSES SARINGAN DATA WEBSOCKET
+        // 🚀 PROSES SARINGAN DATA JALUR WEBSOCKET (DIBIKIN SAKTI KEMBALI)
         if (isWsJalur) {
             let cleanChunk = chunk;
 
-            // Saringan andalan Anda HANYA aktif jika jabat tangan SSH belum selesai
-            if (!sshHandshakeDone) {
+            // 🔥 KUNCI UTAMA: Saringan hanya memotong data jika ukuran chunk kecil (di bawah 1500 byte)
+            // Ini menjamin paket payload enhanced tiruan terpotong sempurna, tapi data UPLOAD SPEEDTEST (paket besar) tidak akan disentuh!
+            if (chunk.length < 1500) {
                 const chunkStr = chunk.toString('utf8');
 
                 if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
                     if (chunkStr.includes("SSH-")) {
                         const idx = chunkStr.indexOf("SSH-");
                         cleanChunk = chunk.slice(idx);
-                        sshHandshakeDone = true; // Kunci status, matikan saringan untuk paket berikutnya
                     } else if (chunkStr.includes("\x53\x53\x48")) {
                         const idx = chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
                         cleanChunk = chunk.slice(idx);
-                        sshHandshakeDone = true; // Kunci status
                     } else {
-                        return; // Ampas HTTP murni dibakar
+                        return; // Ampas HTTP murni dibakar hangus (Kesaktian Awal!)
                     }
                 }
             }
 
-            // Kirim langsung data tanpa takut tersaring saat speedtest upload
             if (!backendReady) {
                 queueBuffers.push(cleanChunk);
             } else {
                 if (targetConn.writable) {
-                    // Cek backpressure sederhana tanpa ngerusak pipe
                     if (!targetConn.write(cleanChunk)) {
                         clientConn.pause();
                         targetConn.once('drain', () => clientConn.resume());
