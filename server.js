@@ -9,9 +9,11 @@ const SSH_TARGET_PORT = parseInt(process.env.WS_TARGET_PORT || "22");
 const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
+
+// Buffer besar untuk menampung speedtest upload
 const BUFFER_SIZE = 1024 * 1024; 
 
-console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.6 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.7 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -28,36 +30,6 @@ function parseHeaders(rawBuffer) {
     return headers;
 }
 
-// 🔥 Fungsi Unmasking: Mengupas payload WebSocket biner murni saat upload
-function decodeWsFrame(buffer) {
-    if (buffer.length < 6) return buffer; 
-    
-    const finOpcode = buffer[0];
-    // Hanya proses jika ini adalah frame biner (0x82) atau kelanjutan frame (0x80)
-    if ((finOpcode & 0x0f) === 0x02 || (finOpcode & 0x0f) === 0x00 || (finOpcode & 0x0f) === 0x01) {
-        const hasMask = (buffer[1] & 0x80) !== 0;
-        let payloadLen = buffer[1] & 0x7f;
-        let maskOffset = 2;
-
-        if (payloadLen === 126) maskOffset = 4;
-        else if (payloadLen === 127) maskOffset = 10;
-
-        if (!hasMask) {
-            return buffer.slice(maskOffset);
-        }
-
-        const maskKey = buffer.slice(maskOffset, maskOffset + 4);
-        const payload = buffer.slice(maskOffset + 4);
-        
-        // Dekripsi XOR Masking dari Client (Proses krusial saat Upload Speedtest)
-        for (let i = 0; i < payload.length; i++) {
-            payload[i] = payload[i] ^ maskKey[i % 4];
-        }
-        return payload;
-    }
-    return buffer;
-}
-
 const server = net.createServer({
     readableHighWaterMark: BUFFER_SIZE,
     writableHighWaterMark: BUFFER_SIZE
@@ -68,8 +40,10 @@ const server = net.createServer({
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
-    let handshakeDone = false;
     
+    // Counter paket untuk mengunci saringan teks agar tidak merusak data upload
+    let packetCounter = 0; 
+
     let queueBuffers = []; 
     let backendReady = false;
 
@@ -79,6 +53,8 @@ const server = net.createServer({
     };
 
     clientConn.on('data', (chunk) => {
+        packetCounter++; // Hitung setiap paket data yang masuk dari HP
+
         if (!firstPacketRead) {
             firstPacketRead = true;
             
@@ -145,63 +121,42 @@ const server = net.createServer({
                 });
             }
 
+            // Data dari server (Dropbear) langsung dikirim murni tanpa diubah ke format WS
             targetConn.on('data', (bChunk) => {
-                // Konversi data dari Dropbear ke format frame WebSocket sebelum dikirim ke HP
-                if (isWsJalur) {
-                    const wsHeader = Buffer.alloc(2);
-                    wsHeader[0] = 0x82; // Binary frame
-                    if (bChunk.length <= 125) {
-                        wsHeader[1] = bChunk.length;
-                        if (clientConn.writable) clientConn.write(Buffer.concat([wsHeader, bChunk]));
-                    } else if (bChunk.length <= 65535) {
-                        wsHeader[1] = 126;
-                        const extLen = Buffer.alloc(2);
-                        extLen.writeUInt16BE(bChunk.length, 0);
-                        if (clientConn.writable) clientConn.write(Buffer.concat([wsHeader, extLen, bChunk]));
-                    } else {
-                        wsHeader[1] = 127;
-                        const extLen = Buffer.alloc(8);
-                        extLen.writeUInt32BE(0, 0);
-                        extLen.writeUInt32BE(bChunk.length, 4);
-                        if (clientConn.writable) clientConn.write(Buffer.concat([wsHeader, extLen, bChunk]));
-                    }
-                } else {
-                    if (clientConn.writable) clientConn.write(bChunk);
-                }
+                if (clientConn.writable) clientConn.write(bChunk);
             });
             targetConn.on('error', destroyAll);
             targetConn.on('close', destroyAll);
             return;
         }
 
-        // 🚀 PROSES PENANGANAN DATA DATA LANJUTAN (ANTI-SPEEDTEST DC)
+        // 🚀 PROSES SARINGAN DATA JALUR WEBSOCKET ENHANCED
         if (isWsJalur) {
             let cleanChunk = chunk;
-            const chunkStr = chunk.toString('utf8');
 
-            // 1. Jalankan saringan enhanced andalan Anda untuk membuang teks HTTP tiruan
-            if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
-                if (chunkStr.includes("SSH-")) {
-                    cleanChunk = chunk.slice(chunkStr.indexOf("SSH-"));
-                    handshakeDone = true;
-                } else if (chunkStr.includes("\x53\x53\x48")) {
-                    cleanChunk = chunk.slice(chunk.indexOf(Buffer.from([0x53, 0x53, 0x48])));
-                    handshakeDone = true;
-                } else {
-                    return; // Ampas HTTP murni hangus
+            // 🔥 KUNCI UTAMA: Saringan enhanced andalan Anda HANYA aktif pada 3 paket pertama (Fase Handshake)
+            // Lewat dari 3 paket, saringan MATI TOTAL. Jadi data SPEEDTEST UPLOAD tidak akan tersentuh atau rusak!
+            if (packetCounter <= 3) {
+                const chunkStr = chunk.toString('utf8');
+
+                if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
+                    if (chunkStr.includes("SSH-")) {
+                        const idx = chunkStr.indexOf("SSH-");
+                        cleanChunk = chunk.slice(idx);
+                    } else if (chunkStr.includes("\x53\x53\x48")) {
+                        const idx = chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
+                        cleanChunk = chunk.slice(idx);
+                    } else {
+                        return; // Ampas HTTP murni dibakar (Kesaktian awal terjaga)
+                    }
                 }
-            }
-
-            // 2. KUNCI RAHASIA UPLOAD: Jika handshake kelar atau data biner masuk, kupas masking WebSocket-nya!
-            if (handshakeDone || chunk[0] === 0x82 || chunk[0] === 0x81 || chunk[0] === 0x80) {
-                cleanChunk = decodeWsFrame(cleanChunk);
-                handshakeDone = true; // Kunci status jika data biner mulai mengalir
             }
 
             if (!backendReady) {
                 queueBuffers.push(cleanChunk);
             } else {
                 if (targetConn.writable) {
+                    // Penanganan aliran data deras (Backpressure Control) agar tidak disconnect saat upload masif
                     if (!targetConn.write(cleanChunk)) {
                         clientConn.pause();
                         targetConn.once('drain', () => clientConn.resume());
