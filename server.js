@@ -9,9 +9,11 @@ const SSH_TARGET_PORT = parseInt(process.env.WS_TARGET_PORT || "22");
 const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
-const BUFFER_SIZE = 256 * 1024; 
 
-console.log(`[monster-mux] ALL-IN-ONE FIXED KEX v7.3 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+// Buffer besar agar speedtest upload mulus tanpa bottleneck
+const BUFFER_SIZE = 1024 * 1024; 
+
+console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.4 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -33,13 +35,15 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 15000); 
+    clientConn.setKeepAlive(true, 30000); // Naikkan ke 30 detik untuk stabilitas
 
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
-    let pipeActivated = false; // 🔥 Ubah penanda menjadi aktivasi pipe
     
+    // Tanda penunjuk status jabat tangan SSH
+    let sshHandshakeDone = false; 
+
     let queueBuffers = []; 
     let backendReady = false;
 
@@ -48,25 +52,7 @@ const server = net.createServer({
         if (targetConn) targetConn.destroy();
     };
 
-    const startPiping = () => {
-        if (pipeActivated) return;
-        pipeActivated = true;
-        
-        // Lepas pasang secara bersih ke native pipe tanpa double write
-        clientConn.unpipe(targetConn);
-        targetConn.unpipe(clientConn);
-        
-        clientConn.pipe(targetConn);
-        targetConn.pipe(clientConn);
-    };
-
     clientConn.on('data', (chunk) => {
-        // Jika pipe sudah aktif, biarkan pipe bekerja (kasus upload speedtest)
-        if (pipeActivated && targetConn && targetConn.writable) {
-            if (!targetConn.write(chunk)) clientConn.pause();
-            return;
-        }
-
         if (!firstPacketRead) {
             firstPacketRead = true;
             
@@ -79,10 +65,8 @@ const server = net.createServer({
                     writableHighWaterMark: BUFFER_SIZE
                 }, () => {
                     targetConn.setNoDelay(true);
-                    targetConn.setKeepAlive(true, 15000);
                     targetConn.write(chunk);
                     backendReady = true;
-                    startPiping(); // Jalur SSL langsung pakai pipe
                 });
             } else {
                 isWsJalur = true;
@@ -124,7 +108,6 @@ const server = net.createServer({
                     writableHighWaterMark: BUFFER_SIZE
                 }, () => {
                     targetConn.setNoDelay(true);
-                    targetConn.setKeepAlive(true, 15000);
                     backendReady = true;
                     
                     if (queueBuffers.length > 0) {
@@ -137,49 +120,58 @@ const server = net.createServer({
             }
 
             targetConn.on('data', (bChunk) => {
-                if (pipeActivated) {
-                    if (!clientConn.write(bChunk)) targetConn.pause();
-                    return;
+                // Saat dropbear mengirim balik banner SSH-2.0..., tandai jabat tangan dimulai
+                if (bChunk.toString('utf8').includes("SSH-")) {
+                    sshHandshakeDone = true; 
                 }
                 if (clientConn.writable) clientConn.write(bChunk);
             });
-
-            targetConn.on('drain', () => { clientConn.resume(); });
-            clientConn.on('drain', () => { targetConn.resume(); });
             targetConn.on('error', destroyAll);
             targetConn.on('close', destroyAll);
             return;
         }
 
-        // Jalur Pembersihan data awal WebSocket SSH
-        if (isWsJalur && !pipeActivated) {
+        // 🚀 PROSES SARINGAN DATA WEBSOCKET
+        if (isWsJalur) {
             let cleanChunk = chunk;
-            const chunkStr = chunk.toString('utf8');
 
-            if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
-                if (chunkStr.includes("SSH-")) {
-                    cleanChunk = chunk.slice(chunkStr.indexOf("SSH-"));
-                } else if (chunkStr.includes("\x53\x53\x48")) {
-                    cleanChunk = chunk.slice(chunk.indexOf(Buffer.from([0x53, 0x53, 0x48])));
-                } else {
-                    return; // Ampas HTTP murni dibakar
+            // Saringan andalan Anda HANYA aktif jika jabat tangan SSH belum selesai
+            if (!sshHandshakeDone) {
+                const chunkStr = chunk.toString('utf8');
+
+                if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
+                    if (chunkStr.includes("SSH-")) {
+                        const idx = chunkStr.indexOf("SSH-");
+                        cleanChunk = chunk.slice(idx);
+                        sshHandshakeDone = true; // Kunci status, matikan saringan untuk paket berikutnya
+                    } else if (chunkStr.includes("\x53\x53\x48")) {
+                        const idx = chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
+                        cleanChunk = chunk.slice(idx);
+                        sshHandshakeDone = true; // Kunci status
+                    } else {
+                        return; // Ampas HTTP murni dibakar
+                    }
                 }
             }
 
-            if (backendReady && targetConn.writable) {
-                targetConn.write(cleanChunk);
-            } else {
+            // Kirim langsung data tanpa takut tersaring saat speedtest upload
+            if (!backendReady) {
                 queueBuffers.push(cleanChunk);
-            }
-
-            // PENTING: Jangan langsung aktifkan pipe di paket ini.
-            // Biarkan paket data murni setelah banner SSH masuk di putaran berikutnya baru di-pipe.
-            if (chunkStr.includes("SSH-") || chunk.includes(Buffer.from([0x53, 0x53, 0x48]))) {
-                setTimeout(() => { startPiping(); }, 50); // Delay 50ms agar KEX handshake awal selesai aman
+            } else {
+                if (targetConn.writable) {
+                    // Cek backpressure sederhana tanpa ngerusak pipe
+                    if (!targetConn.write(cleanChunk)) {
+                        clientConn.pause();
+                        targetConn.once('drain', () => clientConn.resume());
+                    }
+                }
             }
         } else {
-            if (backendReady && targetConn.writable) targetConn.write(chunk);
-            else queueBuffers.push(chunk);
+            if (!backendReady) {
+                queueBuffers.push(chunk);
+            } else {
+                if (targetConn.writable) targetConn.write(chunk);
+            }
         }
     });
 
