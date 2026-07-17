@@ -12,7 +12,7 @@ const TLS_HANDSHAKE_BYTE = 0x16;
 
 const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer Jumbo
 
-console.log(`[monster-mux] HYBRID ENHANCED ENGINE v9.5 ACTIVE 🚀`);
+console.log(`[monster-mux] MANUAL BYPASS ENGINE v9.6 ACTIVE 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -36,18 +36,36 @@ const server = net.createServer({
     clientConn.setNoDelay(true);
     clientConn.setKeepAlive(true, 60000);
 
+    let targetConn = null;
+    let isWsJalur = false;
     let firstPacketRead = false;
+    
+    // Saklar bypass filter teks kustom
+    let isBypassed = false; 
+
+    let queueBuffers = []; 
+    let backendReady = false;
+
+    const destroyAll = () => {
+        clientConn.destroy();
+        if (targetConn) targetConn.destroy();
+        queueBuffers = [];
+    };
+
+    // Kendali backpressure global terpisah biar gak stuck
+    clientConn.on('drain', () => {
+        if (targetConn && !targetConn.destroyed && targetConn.isPaused()) {
+            targetConn.resume();
+        }
+    });
 
     clientConn.on('data', (chunk) => {
         if (!firstPacketRead) {
             firstPacketRead = true;
             
-            // Hancurkan dulu listener data bawaan agar bisa kita pasang logika pipa nanti
-            clientConn.removeAllListeners('data'); 
-
             if (chunk[0] === TLS_HANDSHAKE_BYTE) {
-                // === JALUR SSL MURNI ===
-                const targetConn = net.connect({ 
+                isWsJalur = false;
+                targetConn = net.connect({ 
                     host: SSL_TARGET_HOST, 
                     port: SSL_TARGET_PORT,
                     readableHighWaterMark: BUFFER_SIZE,
@@ -55,19 +73,10 @@ const server = net.createServer({
                 }, () => {
                     targetConn.setNoDelay(true);
                     targetConn.write(chunk);
-                    
-                    clientConn.pipe(targetConn);
-                    targetConn.pipe(clientConn);
+                    backendReady = true;
                 });
-
-                const destroyAll = () => { clientConn.destroy(); targetConn.destroy(); };
-                targetConn.on('error', destroyAll);
-                targetConn.on('close', destroyAll);
-                clientConn.on('error', destroyAll);
-                clientConn.on('close', destroyAll);
-
             } else {
-                // === JALUR WEBSOCKET / PAYLOAD ANEH (SARINGAN DIKEMBALIKAN) ===
+                isWsJalur = true;
                 const headers = parseHeaders(chunk);
                 const rawTextLower = chunk.toString('utf8').toLowerCase();
                 const isWsUpgrade = rawTextLower.includes("upgrade: websocket") || headers["upgrade"] === "websocket";
@@ -99,58 +108,88 @@ const server = net.createServer({
                     clientConn.write(Buffer.from(DEFAULT_RESPONSE));
                 }
 
-                // KONEKSI KE OPENSSH LOKAL DENGAN PEMBERSIH KESAKTIAN AWAL
-                const targetConn = net.connect({ 
+                targetConn = net.connect({ 
                     host: "127.0.0.1", 
                     port: SSH_TARGET_PORT,
                     readableHighWaterMark: BUFFER_SIZE,
                     writableHighWaterMark: BUFFER_SIZE
                 }, () => {
                     targetConn.setNoDelay(true);
+                    backendReady = true;
                     
-                    // SAKLAR KESAKTIAN: Jalankan saringan pembersih kotoran HTTP Custom hanya di paket awal
-                    let isBypassed = false;
-
-                    clientConn.on('data', (nextChunk) => {
-                        if (!isBypassed) {
-                            const chunkStr = nextChunk.toString('utf8');
-                            
-                            // Cari serpihan identitas SSH asli dari HP
-                            if (chunkStr.includes("SSH-") || chunkStr.includes("\x53\x53\x48")) {
-                                const idx = chunkStr.includes("SSH-") ? 
-                                            chunkStr.indexOf("SSH-") : 
-                                            nextChunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
-                                
-                                const cleanData = nextChunk.slice(idx);
-                                if (targetConn.writable) targetConn.write(cleanData);
-                                
-                                // KUNCI MATI SARINGAN: Detik ini juga, lepas kendali dan lempar ke PIPE murni C++
-                                isBypassed = true;
-                                clientConn.removeAllListeners('data'); 
-                                clientConn.pipe(targetConn);
-                                targetConn.pipe(clientConn);
-                                return;
-                            }
-                            
-                            // Jika terdeteksi text HTTP ampas pembawa sial, langsung hanguskan!
-                            if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
-                                return; 
-                            }
+                    if (queueBuffers.length > 0) {
+                        for (let qChunk of queueBuffers) {
+                            if (targetConn.writable) targetConn.write(qChunk);
                         }
-                        
-                        // Fallback aman sebelum ter-pipe sempurna
-                        if (targetConn.writable) targetConn.write(nextChunk);
-                    });
+                        queueBuffers = [];
+                    }
                 });
+            }
 
-                const destroyAll = () => { clientConn.destroy(); targetConn.destroy(); };
-                targetConn.on('error', destroyAll);
-                targetConn.on('close', destroyAll);
-                clientConn.on('error', destroyAll);
-                clientConn.on('close', destroyAll);
+            // Aliran balik data murni dari OpenSSH ke HP lu tanpa rem berlebihan
+            targetConn.on('data', (bChunk) => {
+                if (clientConn.writable) {
+                    if (!clientConn.write(bChunk)) {
+                        targetConn.pause();
+                    }
+                }
+            });
+
+            targetConn.on('drain', () => {
+                if (clientConn && !clientConn.destroyed) {
+                    clientConn.resume();
+                }
+            });
+
+            targetConn.on('error', destroyAll);
+            targetConn.on('close', destroyAll);
+            return;
+        }
+
+        // 🚀 MEKANISME BYPASS DINAMIS (ANTI STUCK TIMEOUT & ANTI ILLEGAL PACKET)
+        if (isWsJalur) {
+            let cleanChunk = chunk;
+
+            if (!isBypassed) {
+                const chunkStr = chunk.toString('utf8');
+                
+                if (chunkStr.includes("SSH-") || chunkStr.includes("\x53\x53\x48")) {
+                    const idx = chunkStr.includes("SSH-") ? 
+                                chunkStr.indexOf("SSH-") : 
+                                chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
+                    
+                    cleanChunk = chunk.slice(idx);
+                    isBypassed = true; // Saringan mati total selamanya! Aliran langsung loss tanpa perantara kaku
+                } else if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
+                    return; // Bakar sampah kotoran HTTP Custom di awal jabat tangan
+                }
+            }
+
+            if (!backendReady) {
+                queueBuffers.push(cleanChunk);
+            } else {
+                if (targetConn && targetConn.writable) {
+                    if (!targetConn.write(cleanChunk)) {
+                        clientConn.pause();
+                    }
+                }
+            }
+        } else {
+            // Jalur SSL
+            if (!backendReady) {
+                queueBuffers.push(chunk);
+            } else {
+                if (targetConn && targetConn.writable) {
+                    if (!targetConn.write(chunk)) {
+                        clientConn.pause();
+                    }
+                }
             }
         }
     });
+
+    clientConn.on('error', destroyAll);
+    clientConn.on('close', destroyAll);
 });
 
 server.listen(LISTEN_PORT, '0.0.0.0');
