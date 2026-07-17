@@ -1,17 +1,21 @@
 #!/bin/bash
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.7 (ALPINE OPENSSH + BANNER CLEAN REGULAR) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.8 (FIXED FOR MASSIVE SPEEDTEST UPLOAD) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
-echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (1MB Default)..."
-sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216" 2>/dev/null
-sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216" 2>/dev/null
-sysctl -w net.core.rmem_max=16777216 2>/dev/null
-sysctl -w net.core.wmem_max=16777216 2>/dev/null
+echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (BUFFER DITINGKATKAN)..."
+# Angka tengah (default) dinaikkan ke 4MB & Maksimal ke 32MB agar tidak overload pas upload
+sysctl -w net.ipv4.tcp_rmem="4096 4194304 33554432" 2>/dev/null
+sysctl -w net.ipv4.tcp_wmem="4096 4194304 33554432" 2>/dev/null
+sysctl -w net.core.rmem_max=33554432 2>/dev/null
+sysctl -w net.core.wmem_max=33554432 2>/dev/null
+# Tambahan tweaks anti packet loss saat upload deras
+sysctl -w net.core.netdev_max_backlog=10000 2>/dev/null
+sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
 
 USER_NAME="${SSH_USER:-dd}"
 USER_PASS="${SSH_PASSWORD:-dd}"
@@ -34,7 +38,6 @@ if ! id "$USER_NAME" &>/dev/null; then
 fi
 echo "$USER_NAME:$USER_PASS" | chpasswd
 
-# 💎 FIX BANNER: Teks Polosan Rapi dan Simetris Khusus Log HTTP Custom
 echo "[*] Membuat Banner Rapi untuk OpenSSH..."
 cat << 'EOF' > /etc/ssh/ssh_banner
 ==================================================
@@ -66,11 +69,7 @@ X11Forwarding no
 PrintMotd no
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/ssh/sftp-server
-
-# Sambungkan file banner yang bersih ke OpenSSH
 Banner /etc/ssh/ssh_banner
-
-# Buka paksa algoritma jadul agar HTTP Custom bisa jabat tangan dengan sukses
 KexAlgorithms +diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
 Ciphers +aes256-ctr,aes128-ctr
 MACs +hmac-sha1
@@ -80,11 +79,11 @@ echo "[*] Memulai OpenSSH Server di Port Lokal 22..."
 /usr/sbin/sshd
 
 echo "[*] Membuat konfigurasi Stunnel..."
+# 🛠 FIX KUNCI: Menghapus chroot agar Stunnel tidak crash saat badai upload
 cat <<EOF > /etc/stunnel/stunnel.conf
 pid = /var/run/stunnel.pid
 foreground = yes
 debug = 4
-chroot = /var/run/stunnel
 setuid = stunnel
 setgid = stunnel
 
