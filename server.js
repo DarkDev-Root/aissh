@@ -10,9 +10,9 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-const BUFFER_SIZE = 1024 * 1024; 
+const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer untuk Speedtest Gigabit
 
-console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.7.1 OPTIMIZED ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ALL-IN-ONE ULTRA STABLE v7.7.2 ACTIVE 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -96,7 +96,6 @@ const server = net.createServer({
                 }
             }
 
-            // Inisialisasi koneksi ke backend dengan buffer besar
             targetConn = net.connect({
                 ...connectOptions,
                 readableHighWaterMark: BUFFER_SIZE,
@@ -105,12 +104,13 @@ const server = net.createServer({
 
             targetConn.setNoDelay(true);
 
-            // PASANG LISTENER SEBELUM CONNECT SELESAI (Menghindari data loss)
             targetConn.on('data', (bChunk) => {
                 if (clientConn.writable) {
                     if (!clientConn.write(bChunk)) {
                         targetConn.pause();
-                        clientConn.once('drain', () => targetConn.resume());
+                        clientConn.once('drain', () => {
+                            if (targetConn && !targetConn.destroyed) targetConn.resume();
+                        });
                     }
                 }
             });
@@ -121,15 +121,12 @@ const server = net.createServer({
             targetConn.on('connect', () => {
                 backendReady = true;
                 
-                // Kirim paket pertama
-                if (isWsJalur) {
-                    // Jalur WS tidak perlu kirim chunk pertama HTTP-nya ke Dropbear, 
-                    // tapi jika ada saringan awal silakan sesuaikan. Di sini kita langsung kuras queue jika ada.
-                } else {
-                    targetConn.write(chunk); // Kirim handshake TLS mentah
+                // Kuras paksa chunk pertama jika SSL murni
+                if (!isWsJalur) {
+                    targetConn.write(chunk); 
                 }
 
-                // Kuras antrean paket ke-2, ke-3 dst yang sempat tertahan baik SSL maupun WS
+                // Kuras semua sisa antrean paket (paket 2, 3 dst) yang masuk saat proses handshake
                 if (queueBuffers.length > 0) {
                     for (let qChunk of queueBuffers) {
                         if (targetConn.writable) targetConn.write(qChunk);
@@ -141,11 +138,13 @@ const server = net.createServer({
             return;
         }
 
-        // 🚀 PROSES DATA PAKET BERIKUTNYA (Paket 2, 3, dst)
+        // 🚀 PROSES DATA BERIKUTNYA (Anti Gagal Pas Upload)
         if (isWsJalur) {
             let cleanChunk = chunk;
 
-            if (packetCounter <= 5) { // Ditambah toleransi fragmentasi
+            // KUNCI EMAS: Saringan HANYA aktif pada paket ke-2 maksimal jika terindikasi text HTTP ampas.
+            // Di atas paket ke-2, bypass total tanpa saringan teks agar upload data binary Speedtest tidak rusak.
+            if (packetCounter <= 2) { 
                 const chunkStr = chunk.toString('utf8');
                 if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
                     if (chunkStr.includes("SSH-")) {
@@ -155,7 +154,7 @@ const server = net.createServer({
                         const idx = chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
                         cleanChunk = chunk.slice(idx);
                     } else {
-                        return; 
+                        return; // Membakar HTTP ampas murni
                     }
                 }
             }
@@ -166,19 +165,23 @@ const server = net.createServer({
                 if (targetConn && targetConn.writable) {
                     if (!targetConn.write(cleanChunk)) {
                         clientConn.pause();
-                        targetConn.once('drain', () => clientConn.resume());
+                        targetConn.once('drain', () => {
+                            if (clientConn && !clientConn.destroyed) clientConn.resume();
+                        });
                     }
                 }
             }
         } else {
-            // Jalur SSL
+            // Jalur SSL murni bypass total tanpa saringan teks
             if (!backendReady) {
                 queueBuffers.push(chunk);
             } else {
                 if (targetConn && targetConn.writable) {
                     if (!targetConn.write(chunk)) {
                         clientConn.pause();
-                        targetConn.once('drain', () => clientConn.resume());
+                        targetConn.once('drain', () => {
+                            if (clientConn && !clientConn.destroyed) clientConn.resume();
+                        });
                     }
                 }
             }
