@@ -10,9 +10,9 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer Optimal
+const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer Jumbo Optimal
 
-console.log(`[monster-mux] ENGINE TANK BAJA v8.0 ULTRA STABLE ACTIVE 🚀`);
+console.log(`[monster-mux] PURE PIPE ENGINE v9.0 ACTIVE 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -34,38 +34,21 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 60000); // Naikkan ke 60 detik agar tahan banting pas sinyal goyang
+    clientConn.setKeepAlive(true, 60000); // 60 Detik TCP KeepAlive di level socket Node
 
-    let targetConn = null;
-    let isWsJalur = false;
     let firstPacketRead = false;
-    
-    // SAKLAR UTAMA: Jika true, saringan HTTP mati total demi kestabilan Vless-like
-    let bypassFilter = false; 
-
-    let queueBuffers = []; 
-    let backendReady = false;
-
-    const destroyAll = () => {
-        clientConn.destroy();
-        if (targetConn) targetConn.destroy();
-        queueBuffers = [];
-    };
-
-    // Handler drain global (Dipasang sekali, anti memory-leak saat badai upload/download)
-    clientConn.on('drain', () => {
-        if (targetConn && !targetConn.destroyed && targetConn.isPaused()) {
-            targetConn.resume();
-        }
-    });
 
     clientConn.on('data', (chunk) => {
+        // HANYA CEK PAKET PERTAMA UNTUK FILTER JALUR
         if (!firstPacketRead) {
             firstPacketRead = true;
             
+            // Hancurkan listener data kustom agar sistem PIPA murni bekerja full speed tanpa terganggu
+            clientConn.removeAllListeners('data'); 
+
             if (chunk[0] === TLS_HANDSHAKE_BYTE) {
-                isWsJalur = false;
-                targetConn = net.connect({ 
+                // === JALUR SSL MURNI ===
+                const targetConn = net.connect({ 
                     host: SSL_TARGET_HOST, 
                     port: SSL_TARGET_PORT,
                     readableHighWaterMark: BUFFER_SIZE,
@@ -73,10 +56,20 @@ const server = net.createServer({
                 }, () => {
                     targetConn.setNoDelay(true);
                     targetConn.write(chunk);
-                    backendReady = true;
+                    
+                    // Jembatan pipa otomatis dua arah bawaan C++ Core Node.js (Anti-Rontok Pas Upload)
+                    clientConn.pipe(targetConn);
+                    targetConn.pipe(clientConn);
                 });
+
+                const destroyAll = () => { clientConn.destroy(); targetConn.destroy(); };
+                targetConn.on('error', destroyAll);
+                targetConn.on('close', destroyAll);
+                clientConn.on('error', destroyAll);
+                clientConn.on('close', destroyAll);
+
             } else {
-                isWsJalur = true;
+                // === JALUR WEBSOCKET / PAYLOAD ANEH ===
                 const headers = parseHeaders(chunk);
                 const rawTextLower = chunk.toString('utf8').toLowerCase();
                 const isWsUpgrade = rawTextLower.includes("upgrade: websocket") || headers["upgrade"] === "websocket";
@@ -108,89 +101,28 @@ const server = net.createServer({
                     clientConn.write(Buffer.from(DEFAULT_RESPONSE));
                 }
 
-                targetConn = net.connect({ 
+                // Langsung hubungkan ke OpenSSH lokal
+                const targetConn = net.connect({ 
                     host: "127.0.0.1", 
                     port: SSH_TARGET_PORT,
                     readableHighWaterMark: BUFFER_SIZE,
                     writableHighWaterMark: BUFFER_SIZE
                 }, () => {
                     targetConn.setNoDelay(true);
-                    backendReady = true;
                     
-                    if (queueBuffers.length > 0) {
-                        for (let qChunk of queueBuffers) {
-                            if (targetConn.writable) targetConn.write(qChunk);
-                        }
-                        queueBuffers = [];
-                    }
+                    // Aliran data murni byte-by-byte (Sama persis seperti core engine Vless)
+                    clientConn.pipe(targetConn);
+                    targetConn.pipe(clientConn);
                 });
-            }
 
-            targetConn.on('data', (bChunk) => {
-                if (clientConn.writable) {
-                    if (!clientConn.write(bChunk)) {
-                        targetConn.pause();
-                    }
-                }
-            });
-
-            // Drain untuk targetConn dipasang sekali di sini
-            targetConn.on('drain', () => {
-                if (clientConn && !clientConn.destroyed) {
-                    clientConn.resume();
-                }
-            });
-
-            targetConn.on('error', destroyAll);
-            targetConn.on('close', destroyAll);
-            return;
-        }
-
-        // 🚀 PROSES SARINGAN DATA JALUR WEBSOCKET (ANTI PACKET LOSS / ANTI CRASH)
-        if (isWsJalur) {
-            let cleanChunk = chunk;
-
-            if (!bypassFilter) {
-                const chunkStr = chunk.toString('utf8');
-                
-                // Cari tanda SSH murni tanpa peduli ini paket ke berapa
-                if (chunkStr.includes("SSH-") || chunkStr.includes("\x53\x53\x48")) {
-                    const idx = chunkStr.includes("SSH-") ? 
-                                chunkStr.indexOf("SSH-") : 
-                                chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
-                    
-                    cleanChunk = chunk.slice(idx);
-                    bypassFilter = true; // Saringan mati total selamanya untuk koneksi ini!
-                } else if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
-                    return; // Bakar ampas HTTP kotor awal
-                }
-            }
-
-            if (!backendReady) {
-                queueBuffers.push(cleanChunk);
-            } else {
-                if (targetConn && targetConn.writable) {
-                    if (!targetConn.write(cleanChunk)) {
-                        clientConn.pause();
-                    }
-                }
-            }
-        } else {
-            // Jalur SSL murni bypass total
-            if (!backendReady) {
-                queueBuffers.push(chunk);
-            } else {
-                if (targetConn && targetConn.writable) {
-                    if (!targetConn.write(chunk)) {
-                        clientConn.pause();
-                    }
-                }
+                const destroyAll = () => { clientConn.destroy(); targetConn.destroy(); };
+                targetConn.on('error', destroyAll);
+                targetConn.on('close', destroyAll);
+                clientConn.on('error', destroyAll);
+                clientConn.on('close', destroyAll);
             }
         }
     });
-
-    clientConn.on('error', destroyAll);
-    clientConn.on('close', destroyAll);
 });
 
 server.listen(LISTEN_PORT, '0.0.0.0');
