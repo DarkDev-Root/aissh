@@ -10,9 +10,9 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer Jumbo Optimal
+const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer Jumbo
 
-console.log(`[monster-mux] PURE PIPE ENGINE v9.0 ACTIVE 🚀`);
+console.log(`[monster-mux] HYBRID ENHANCED ENGINE v9.5 ACTIVE 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -34,16 +34,15 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 60000); // 60 Detik TCP KeepAlive di level socket Node
+    clientConn.setKeepAlive(true, 60000);
 
     let firstPacketRead = false;
 
     clientConn.on('data', (chunk) => {
-        // HANYA CEK PAKET PERTAMA UNTUK FILTER JALUR
         if (!firstPacketRead) {
             firstPacketRead = true;
             
-            // Hancurkan listener data kustom agar sistem PIPA murni bekerja full speed tanpa terganggu
+            // Hancurkan dulu listener data bawaan agar bisa kita pasang logika pipa nanti
             clientConn.removeAllListeners('data'); 
 
             if (chunk[0] === TLS_HANDSHAKE_BYTE) {
@@ -57,7 +56,6 @@ const server = net.createServer({
                     targetConn.setNoDelay(true);
                     targetConn.write(chunk);
                     
-                    // Jembatan pipa otomatis dua arah bawaan C++ Core Node.js (Anti-Rontok Pas Upload)
                     clientConn.pipe(targetConn);
                     targetConn.pipe(clientConn);
                 });
@@ -69,7 +67,7 @@ const server = net.createServer({
                 clientConn.on('close', destroyAll);
 
             } else {
-                // === JALUR WEBSOCKET / PAYLOAD ANEH ===
+                // === JALUR WEBSOCKET / PAYLOAD ANEH (SARINGAN DIKEMBALIKAN) ===
                 const headers = parseHeaders(chunk);
                 const rawTextLower = chunk.toString('utf8').toLowerCase();
                 const isWsUpgrade = rawTextLower.includes("upgrade: websocket") || headers["upgrade"] === "websocket";
@@ -101,7 +99,7 @@ const server = net.createServer({
                     clientConn.write(Buffer.from(DEFAULT_RESPONSE));
                 }
 
-                // Langsung hubungkan ke OpenSSH lokal
+                // KONEKSI KE OPENSSH LOKAL DENGAN PEMBERSIH KESAKTIAN AWAL
                 const targetConn = net.connect({ 
                     host: "127.0.0.1", 
                     port: SSH_TARGET_PORT,
@@ -110,9 +108,39 @@ const server = net.createServer({
                 }, () => {
                     targetConn.setNoDelay(true);
                     
-                    // Aliran data murni byte-by-byte (Sama persis seperti core engine Vless)
-                    clientConn.pipe(targetConn);
-                    targetConn.pipe(clientConn);
+                    // SAKLAR KESAKTIAN: Jalankan saringan pembersih kotoran HTTP Custom hanya di paket awal
+                    let isBypassed = false;
+
+                    clientConn.on('data', (nextChunk) => {
+                        if (!isBypassed) {
+                            const chunkStr = nextChunk.toString('utf8');
+                            
+                            // Cari serpihan identitas SSH asli dari HP
+                            if (chunkStr.includes("SSH-") || chunkStr.includes("\x53\x53\x48")) {
+                                const idx = chunkStr.includes("SSH-") ? 
+                                            chunkStr.indexOf("SSH-") : 
+                                            nextChunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
+                                
+                                const cleanData = nextChunk.slice(idx);
+                                if (targetConn.writable) targetConn.write(cleanData);
+                                
+                                // KUNCI MATI SARINGAN: Detik ini juga, lepas kendali dan lempar ke PIPE murni C++
+                                isBypassed = true;
+                                clientConn.removeAllListeners('data'); 
+                                clientConn.pipe(targetConn);
+                                targetConn.pipe(clientConn);
+                                return;
+                            }
+                            
+                            // Jika terdeteksi text HTTP ampas pembawa sial, langsung hanguskan!
+                            if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
+                                return; 
+                            }
+                        }
+                        
+                        // Fallback aman sebelum ter-pipe sempurna
+                        if (targetConn.writable) targetConn.write(nextChunk);
+                    });
                 });
 
                 const destroyAll = () => { clientConn.destroy(); targetConn.destroy(); };
