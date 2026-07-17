@@ -1,24 +1,23 @@
 #!/bin/bash
 
-# 🔥 KUNCI UTAMA ANTI REKONEK: Buka paksa limit socket & stack size Alpine Linux
+# 🔥 KUNCI UTAMA ANTI REKONEK PER MENIT: Buka paksa limit socket & stack size Alpine Linux
 ulimit -n 65535
 ulimit -s unlimited
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.9 (FIXED FOR ALPINE BUFFERBLOAT UPLOAD) 🚀
+# 🚀 ULTRA TURBO KERNEL v2.9.5 (ANTI CRASH & ANTI IDLE TIMEOUT) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
 echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (BUFFER EKSTREM)..."
-# Angka tengah (default) dinaikkan ke 8MB & Maksimal ke 16MB biar gak drop pas badai upload
 sysctl -w net.ipv4.tcp_rmem="4096 8388608 16777216" 2>/dev/null
 sysctl -w net.ipv4.tcp_wmem="4096 8388608 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
 sysctl -w net.core.wmem_max=16777216 2>/dev/null
 
-# Longgarkan antrean antarmuka jaringan agar ping tidak bengkak ke 800ms
+# Longgarkan antrean antarmuka jaringan agar ping tidak bengkak saat load tinggi
 sysctl -w net.core.netdev_max_backlog=50000 2>/dev/null
 sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
 
@@ -78,6 +77,10 @@ Banner /etc/ssh/ssh_banner
 KexAlgorithms +diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
 Ciphers +aes256-ctr,aes128-ctr
 MACs +hmac-sha1
+
+# 🛠 SAKLAR ANTI TIMEOUT: Server maksa ping ke HP tiap 20 detik biar Cloudflare gak mutus jalur
+ClientAliveInterval 20
+ClientAliveCountMax 3
 EOF
 
 echo "[*] Memulai OpenSSH Server di Port Lokal 22..."
@@ -113,7 +116,7 @@ stunnel /etc/stunnel/stunnel.conf &
 # --- Argo Tunnel (cloudflared) ---
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
     echo "[*] Menjalankan Cloudflare Tunnel (Low Latency Mode)..."
-    # Diarahkan paksa pake http2 agar cloudflared bypass bufferbloat mentah
+    # Dipaksa lewat protokol http2 murni agar enteng dan lolos sensor upload Cloudflare
     cloudflared tunnel run --protocol http2 --url "http://127.0.0.1:$PUBLIC_PORT" --token "$CF_TUNNEL_TOKEN" &
 fi
 
