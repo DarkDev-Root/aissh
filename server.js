@@ -10,10 +10,9 @@ const WS_MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\n\r\n";
 const TLS_HANDSHAKE_BYTE = 0x16;
 
-// Buffer besar untuk menampung speedtest upload
-const BUFFER_SIZE = 1024 * 1024; 
+const BUFFER_SIZE = 1024 * 1024; // 1MB Buffer Optimal
 
-console.log(`[monster-mux] ALL-IN-ONE FIXED ELITE v7.7.3 ACTIVE on Port: ${LISTEN_PORT} 🚀`);
+console.log(`[monster-mux] ENGINE TANK BAJA v8.0 ULTRA STABLE ACTIVE 🚀`);
 
 function parseHeaders(rawBuffer) {
     const headers = {};
@@ -35,14 +34,14 @@ const server = net.createServer({
     writableHighWaterMark: BUFFER_SIZE
 }, (clientConn) => {
     clientConn.setNoDelay(true);
-    clientConn.setKeepAlive(true, 30000);
+    clientConn.setKeepAlive(true, 60000); // Naikkan ke 60 detik agar tahan banting pas sinyal goyang
 
     let targetConn = null;
     let isWsJalur = false;
     let firstPacketRead = false;
     
-    // Counter paket bawaan asli kamu
-    let packetCounter = 0; 
+    // SAKLAR UTAMA: Jika true, saringan HTTP mati total demi kestabilan Vless-like
+    let bypassFilter = false; 
 
     let queueBuffers = []; 
     let backendReady = false;
@@ -50,11 +49,17 @@ const server = net.createServer({
     const destroyAll = () => {
         clientConn.destroy();
         if (targetConn) targetConn.destroy();
+        queueBuffers = [];
     };
 
-    clientConn.on('data', (chunk) => {
-        packetCounter++; 
+    // Handler drain global (Dipasang sekali, anti memory-leak saat badai upload/download)
+    clientConn.on('drain', () => {
+        if (targetConn && !targetConn.destroyed && targetConn.isPaused()) {
+            targetConn.resume();
+        }
+    });
 
+    clientConn.on('data', (chunk) => {
         if (!firstPacketRead) {
             firstPacketRead = true;
             
@@ -121,39 +126,43 @@ const server = net.createServer({
                 });
             }
 
-            // Jalur data balik murni tanpa diubah formatnya
             targetConn.on('data', (bChunk) => {
                 if (clientConn.writable) {
                     if (!clientConn.write(bChunk)) {
                         targetConn.pause();
-                        clientConn.once('drain', () => targetConn.resume());
                     }
                 }
             });
+
+            // Drain untuk targetConn dipasang sekali di sini
+            targetConn.on('drain', () => {
+                if (clientConn && !clientConn.destroyed) {
+                    clientConn.resume();
+                }
+            });
+
             targetConn.on('error', destroyAll);
             targetConn.on('close', destroyAll);
             return;
         }
 
-        // 🚀 PROSES SARINGAN DATA JALUR WEBSOCKET ENHANCED (FIX UPLOAD SPEEDTEST)
+        // 🚀 PROSES SARINGAN DATA JALUR WEBSOCKET (ANTI PACKET LOSS / ANTI CRASH)
         if (isWsJalur) {
             let cleanChunk = chunk;
 
-            // KUNCI AMAN: Saringan teks galak andalanmu hanya jalan jika ukurannya di bawah 1500 byte (paket teks biasa).
-            // Kalau data upload speedtest jumbo masuk, ukurannya pasti besar, otomatis lolos bypass tanpa dirusak!
-            if (packetCounter <= 5 && chunk.length < 1500) {
+            if (!bypassFilter) {
                 const chunkStr = chunk.toString('utf8');
-
-                if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
-                    if (chunkStr.includes("SSH-")) {
-                        const idx = chunkStr.indexOf("SSH-");
-                        cleanChunk = chunk.slice(idx);
-                    } else if (chunkStr.includes("\x53\x53\x48")) {
-                        const idx = chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
-                        cleanChunk = chunk.slice(idx);
-                    } else {
-                        return; // Ampas HTTP murni dibakar (Kesaktian awal terjaga)
-                    }
+                
+                // Cari tanda SSH murni tanpa peduli ini paket ke berapa
+                if (chunkStr.includes("SSH-") || chunkStr.includes("\x53\x53\x48")) {
+                    const idx = chunkStr.includes("SSH-") ? 
+                                chunkStr.indexOf("SSH-") : 
+                                chunk.indexOf(Buffer.from([0x53, 0x53, 0x48]));
+                    
+                    cleanChunk = chunk.slice(idx);
+                    bypassFilter = true; // Saringan mati total selamanya untuk koneksi ini!
+                } else if (chunkStr.includes("PATCH") || chunkStr.includes("HTTP/") || chunkStr.includes("BMOVE") || chunkStr.includes("GET ")) {
+                    return; // Bakar ampas HTTP kotor awal
                 }
             }
 
@@ -163,18 +172,17 @@ const server = net.createServer({
                 if (targetConn && targetConn.writable) {
                     if (!targetConn.write(cleanChunk)) {
                         clientConn.pause();
-                        targetConn.once('drain', () => clientConn.resume());
                     }
                 }
             }
         } else {
+            // Jalur SSL murni bypass total
             if (!backendReady) {
                 queueBuffers.push(chunk);
             } else {
                 if (targetConn && targetConn.writable) {
                     if (!targetConn.write(chunk)) {
                         clientConn.pause();
-                        targetConn.once('drain', () => clientConn.resume());
                     }
                 }
             }
