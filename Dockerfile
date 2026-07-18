@@ -1,33 +1,37 @@
+# Stage 1: Compile Script Golang menjadi Binary Cepat
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY mux.go .
+COPY ws-proxy.go .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mux mux.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o ws-proxy ws-proxy.go
+
+# Stage 2: Runner Image Utama Alpine
 FROM alpine:3.20
 
-# 1. Tambahkan gcompat (PENTING: untuk perbaikan bug glibc/musl di Alpine)
 RUN apk update && apk add --no-cache \
     stunnel \
     openssl \
     sudo \
     curl \
     bash \
-    nodejs \
-    npm \
-    python3 \
     openssh-server \
     openssh-client \
-    gcompat 
+    gcompat
 
-# 2. Install cloudflared (Argo Tunnel) untuk Linux AMD64
+# Salin binary Golang hasil compile dari Stage 1
+COPY --from=builder /app/mux /usr/local/bin/mux
+COPY --from=builder /app/ws-proxy /usr/local/bin/ws-proxy
+
+# Install cloudflared (Argo Tunnel) untuk Linux AMD64
 RUN curl -fsSL -o /usr/local/bin/cloudflared \
     https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
     && chmod +x /usr/local/bin/cloudflared
 
-# 3. Create necessary application directories
 RUN mkdir -p /var/run/sshd /var/run/stunnel /etc/stunnel
 
-# 4. Copy main entrypoint scripting
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
-# 5. Copy core Javascript Muxer v8.0 (Gunakan versi 8.0 Tank Baja kemarin)
-COPY server.js /server.js
 
 EXPOSE 8080
 
