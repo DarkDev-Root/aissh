@@ -1,23 +1,23 @@
 #!/bin/bash
 
-# 🔥 KUNCI UTAMA ANTI REKONEK PER MENIT: Buka paksa limit socket & stack size Alpine Linux
+# 🔥 KUNCI UTAMA ANTI REKONEK: Buka paksa limit socket & stack size Alpine Linux
 ulimit -n 65535
 ulimit -s unlimited
 
 # =================================================================
-# 🚀 ULTRA TURBO KERNEL v2.9.5 (ANTI CRASH & ANTI IDLE TIMEOUT) 🚀
+# 🚀 ULTRA TURBO KERNEL v3.0 (OPTIMIZED FOR GOLANG ROUTINES) 🚀
 # =================================================================
 echo "[*] Mengaktifkan TCP BBR dan Fair Queuing..."
 sysctl -w net.core.default_qdisc=fq 2>/dev/null
 sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null
 
-echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (BUFFER EKSTREM)..."
+echo "[*] Mengoptimalkan ukuran buffer TCP Kernel (BUFFER RAKSASA)..."
 sysctl -w net.ipv4.tcp_rmem="4096 8388608 16777216" 2>/dev/null
 sysctl -w net.ipv4.tcp_wmem="4096 8388608 16777216" 2>/dev/null
 sysctl -w net.core.rmem_max=16777216 2>/dev/null
 sysctl -w net.core.wmem_max=16777216 2>/dev/null
 
-# Longgarkan antrean antarmuka jaringan agar ping tidak bengkak saat load tinggi
+# Kelonggaran antrean kartu jaringan agar engine Go-routine melesat lempeng
 sysctl -w net.core.netdev_max_backlog=50000 2>/dev/null
 sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
 
@@ -25,6 +25,7 @@ USER_NAME="${SSH_USER:-dd}"
 USER_PASS="${SSH_PASSWORD:-dd}"
 PUBLIC_PORT="${PORT:-8080}"
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
+WS_INTERNAL_PORT="8880"
 
 echo "[*] Membuat sertifikat SSL Stunnel dinamis..."
 mkdir -p /etc/stunnel /var/run/stunnel
@@ -49,7 +50,7 @@ cat << 'EOF' > /etc/ssh/ssh_banner
               SSH SERVER RAILWAY MOD              
 ==================================================
  SPESIFIKASI:                                     
- 🔹 MULTIPLEXER : NODE JS ULTRA ENGINE            
+ 🔹 MULTIPLEXER : GOLANG HIGH-SPEED CORE v3.0    
  🔹 OS PLATFORM : LINUX ALPINE (RAM MONSTER MODE)  
  🔹 SSH SERVICE : OPENSSH SERVER HIGH COMPAT      
 ==================================================
@@ -78,7 +79,7 @@ KexAlgorithms +diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
 Ciphers +aes256-ctr,aes128-ctr
 MACs +hmac-sha1
 
-# 🛠 SAKLAR ANTI TIMEOUT: Server maksa ping ke HP tiap 20 detik biar Cloudflare gak mutus jalur
+# SAKLAR ANTI TIMEOUT: Maksa ping ke HP tiap 20 detik agar Cloudflare gak mutus sepihak
 ClientAliveInterval 20
 ClientAliveCountMax 3
 EOF
@@ -116,9 +117,19 @@ stunnel /etc/stunnel/stunnel.conf &
 # --- Argo Tunnel (cloudflared) ---
 if [ -n "$CF_TUNNEL_TOKEN" ]; then
     echo "[*] Menjalankan Cloudflare Tunnel (Low Latency Mode)..."
-    # Dipaksa lewat protokol http2 murni agar enteng dan lolos sensor upload Cloudflare
     cloudflared tunnel run --protocol http2 --url "http://127.0.0.1:$PUBLIC_PORT" --token "$CF_TUNNEL_TOKEN" &
 fi
 
-echo "[*] Memulai All-In-One Node.js Muxer Monster..."
-exec env PORT="$PUBLIC_PORT" SSL_TARGET_HOST="127.0.0.1" SSL_TARGET_PORT="$SSL_INTERNAL_PORT" node /server.js
+echo "[*] Memulai WS-Proxy Engine internal..."
+export WS_PORT="$WS_INTERNAL_PORT"
+ws-proxy &
+
+echo "[*] Memulai Front Muxer Engine Utama (Golang Mode)..."
+export PORT="$PUBLIC_PORT"
+export SSL_TARGET_HOST="127.0.0.1"
+export SSL_TARGET_PORT="$SSL_INTERNAL_PORT"
+export WS_MUX_TARGET_HOST="127.0.0.1"
+export WS_MUX_TARGET_PORT="$WS_INTERNAL_PORT"
+
+# Menjalankan Muxer utama di foreground
+exec mux
