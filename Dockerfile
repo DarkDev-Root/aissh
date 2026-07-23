@@ -17,7 +17,7 @@ RUN curl -fsSL https://github.com/ambrop72/badvpn/archive/refs/tags/1.999.130.ta
     && mkdir build && cd build \
     && cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 \
     && make badvpn-udpgw \
-    && cp badvpn-udpgw /app/badvpn-udpgw
+    && cp udpgw/badvpn-udpgw /app/badvpn-udpgw
 
 # Stage 2: Runner Image Utama Alpine (Tetap Ringan)
 FROM alpine:3.20
