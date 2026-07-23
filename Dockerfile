@@ -1,7 +1,7 @@
 # Stage 1: Compile Script Golang + Build BadVPN UDPGW dari Source
 FROM golang:1.22-alpine AS builder
 
-# TAMBAHAN: Masukin curl ke apk add builder agar tidak "not found"
+# Install tools compile + curl
 RUN apk update && apk add --no-cache cmake make gcc g++ musl-dev linux-headers curl
 
 WORKDIR /app
@@ -16,7 +16,8 @@ RUN curl -fsSL https://github.com/ambrop72/badvpn/archive/refs/tags/1.999.130.ta
     && cd badvpn-1.999.130 \
     && mkdir build && cd build \
     && cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 \
-    && make badvpn-udpgw
+    && make badvpn-udpgw \
+    && cp badvpn-udpgw /app/badvpn-udpgw
 
 # Stage 2: Runner Image Utama Alpine (Tetap Ringan)
 FROM alpine:3.20
@@ -31,12 +32,10 @@ RUN apk update && apk add --no-cache \
     openssh-client \
     gcompat
 
-# Salin binary Golang hasil compile dari Stage 1
+# Salin semua binary terkompilasi dari folder /app milik Stage 1
 COPY --from=builder /app/mux /usr/local/bin/mux
 COPY --from=builder /app/ws-proxy /usr/local/bin/ws-proxy
-
-# Salin binary badvpn-udpgw hasil compile mandiri dari Stage 1
-COPY --from=builder /src/badvpn-1.999.130/build/badvpn-udpgw /usr/local/bin/badvpn-udpgw
+COPY --from=builder /app/badvpn-udpgw /usr/local/bin/badvpn-udpgw
 
 # Install cloudflared (Argo Tunnel) untuk Linux AMD64
 RUN curl -fsSL -o /usr/local/bin/cloudflared \
