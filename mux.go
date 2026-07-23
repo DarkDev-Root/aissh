@@ -61,11 +61,11 @@ func handleClient(client net.Conn, sslTarget, wsTarget string) {
 	tweakSocket(client)
 	defer client.Close()
 
-	// Gunakan Buffered Reader supaya bisa ngintip data tanpa merusak stream asli
-	reader := bufio.NewReaderSize(client, 1024)
+	// --- OPTIMASI BUFFER: Diperbesar jadi 64KB ---
+	// Agar payload manipulasi sepanjang apa pun bisa ditampung tanpa merusak stream asli.
+	reader := bufio.NewReaderSize(client, 65536)
 
 	// Batasi waktu ngintip byte pertama (Anti-Stuck / Anti-Sunek)
-	// Jika dalam 3 detik client ga kirim data, otomatis anggap sebagai WS/Payload standar
 	_ = client.SetReadDeadline(time.Now().Add(3 * time.Second))
 	
 	// Intip 1 byte pertama tanpa membuangnya dari buffer
@@ -77,7 +77,7 @@ func handleClient(client net.Conn, sslTarget, wsTarget string) {
 	var targetAddr string
 	var label string
 
-	// Jika timeout atau gagal baca, default dialihkan ke WS-Proxy (biasanya payload injeksi nunggu respon)
+	// Deteksi protokol berdasarkan byte pertama
 	if err != nil {
 		targetAddr = wsTarget
 		label = "WS-Proxy (Default/Timeout)"
@@ -99,13 +99,15 @@ func handleClient(client net.Conn, sslTarget, wsTarget string) {
 	tweakSocket(backendConn)
 	defer backendConn.Close()
 
-	// PENTING: Tulis ulang data yang sudah dibaca di buffer (termasuk byte yang diintip tadi)
-	// io.Copy tidak bisa dipakai langsung dari 'client' karena datanya sudah tertahan di 'reader'
 	done := make(chan struct{}, 2)
+	
+	// Alirkan data dari buffer reader ke backend secara loss
 	go func() {
-		_, _ = io.Copy(backendConn, reader) // Mengalirkan data dari buffer reader ke backend
+		_, _ = io.Copy(backendConn, reader) 
 		done <- struct{}{}
 	}()
+	
+	// Alirkan data dari backend balik ke client
 	go func() {
 		_, _ = io.Copy(client, backendConn)
 		done <- struct{}{}
