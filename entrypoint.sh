@@ -21,8 +21,8 @@ sysctl -w net.core.wmem_max=16777216 2>/dev/null
 sysctl -w net.core.netdev_max_backlog=50000 2>/dev/null
 sysctl -w net.ipv4.tcp_max_syn_backlog=8192 2>/dev/null
 
-USER_NAME="${SSH_USER:-dd}"
-USER_PASS="${SSH_PASSWORD:-dd}"
+USER_NAME="${SSH_USER:-dark}"
+USER_PASS="${SSH_PASSWORD:-dev}"
 PUBLIC_PORT="${PORT:-8080}"
 SSL_INTERNAL_PORT="${SSL_INTERNAL_PORT:-2443}"
 WS_INTERNAL_PORT="8880"
@@ -54,7 +54,7 @@ cat << 'EOF' > /etc/ssh/ssh_banner
  🔹 OS PLATFORM : LINUX ALPINE (RAM MONSTER MODE)  
  🔹 SSH SERVICE : OPENSSH SERVER HIGH COMPAT      
 ==================================================
-          powered by : d e d e f a t h u          
+          powered by : BlueHat358          
 ==================================================
 EOF
 
