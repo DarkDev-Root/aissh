@@ -1,8 +1,8 @@
 # Stage 1: Compile Script Golang + Build BadVPN UDPGW dari Source
 FROM golang:1.22-alpine AS builder
 
-# Install tools yang dibutuhkan untuk compile badvpn
-RUN apk update && apk add --no-cache cmake make gcc g++ musl-dev linux-headers
+# TAMBAHAN: Masukin curl ke apk add builder agar tidak "not found"
+RUN apk update && apk add --no-cache cmake make gcc g++ musl-dev linux-headers curl
 
 WORKDIR /app
 COPY mux.go .
@@ -10,7 +10,7 @@ COPY ws-proxy.go .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mux mux.go
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o ws-proxy ws-proxy.go
 
-# Download dan compile badvpn-udpgw langsung dari source resmi (Anti-Link Mati)
+# Download dan compile badvpn-udpgw langsung dari source resmi
 WORKDIR /src
 RUN curl -fsSL https://github.com/ambrop72/badvpn/archive/refs/tags/1.999.130.tar.gz | tar -xz \
     && cd badvpn-1.999.130 \
