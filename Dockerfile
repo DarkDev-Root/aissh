@@ -1,12 +1,24 @@
-# Stage 1: Compile Script Golang menjadi Binary Cepat
+# Stage 1: Compile Script Golang + Build BadVPN UDPGW dari Source
 FROM golang:1.22-alpine AS builder
+
+# Install tools yang dibutuhkan untuk compile badvpn
+RUN apk update && apk add --no-cache cmake make gcc g++ musl-dev linux-headers
+
 WORKDIR /app
 COPY mux.go .
 COPY ws-proxy.go .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mux mux.go
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o ws-proxy ws-proxy.go
 
-# Stage 2: Runner Image Utama Alpine
+# Download dan compile badvpn-udpgw langsung dari source resmi (Anti-Link Mati)
+WORKDIR /src
+RUN curl -fsSL https://github.com/ambrop72/badvpn/archive/refs/tags/1.999.130.tar.gz | tar -xz \
+    && cd badvpn-1.999.130 \
+    && mkdir build && cd build \
+    && cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 \
+    && make badvpn-udpgw
+
+# Stage 2: Runner Image Utama Alpine (Tetap Ringan)
 FROM alpine:3.20
 
 RUN apk update && apk add --no-cache \
@@ -23,18 +35,13 @@ RUN apk update && apk add --no-cache \
 COPY --from=builder /app/mux /usr/local/bin/mux
 COPY --from=builder /app/ws-proxy /usr/local/bin/ws-proxy
 
+# Salin binary badvpn-udpgw hasil compile mandiri dari Stage 1
+COPY --from=builder /src/badvpn-1.999.130/build/badvpn-udpgw /usr/local/bin/badvpn-udpgw
+
 # Install cloudflared (Argo Tunnel) untuk Linux AMD64
 RUN curl -fsSL -o /usr/local/bin/cloudflared \
     https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
     && chmod +x /usr/local/bin/cloudflared
-
-# --- TAMBAHAN UNTUK UDPGW DI ALPINE (TANPA MENGUBAH YANG LAIN) ---
-RUN curl -fsSL -o /usr/local/bin/badvpn-udpgw \
-    https://github.com/ambrop72/badvpn/releases/download/1.999.130/badvpn-linux-amd64-badvpn-1.999.130.tar.bz2 \
-    || curl -fsSL -o /tmp/badvpn.tar.gz https://raw.githubusercontent.com/ganjarprasetio/badvpn-udpgw-alpine/main/badvpn-udpgw \
-    && if [ -f /tmp/badvpn.tar.gz ]; then mv /tmp/badvpn.tar.gz /usr/local/bin/badvpn-udpgw; fi \
-    && chmod +x /usr/local/bin/badvpn-udpgw
-# ----------------------------------------------------------------
 
 RUN mkdir -p /var/run/sshd /var/run/stunnel /etc/stunnel
 
