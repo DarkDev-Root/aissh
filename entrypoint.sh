@@ -121,6 +121,14 @@ if [ -n "$CF_TUNNEL_TOKEN" ]; then
     cloudflared tunnel run --protocol http2 --url "http://127.0.0.1:$PUBLIC_PORT" --token "$CF_TUNNEL_TOKEN" &
 fi
 
+# --- TAMBAHAN UTAMA: BADVPN UDPGW UNTUK MENDUKUNG TRAFIK UDP / GAME ---
+if [ -f /usr/local/bin/badvpn-udpgw ]; then
+    echo "[*] Memulai BadVPN udpgw di Port Lokal 7300..."
+    /usr/local/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 500 --max-connections-for-client 20 &
+else
+    echo "[!] Binary badvpn-udpgw tidak ditemukan!"
+fi
+
 echo "[*] Memulai WS-Proxy Engine internal..."
 export WS_PORT="$WS_INTERNAL_PORT"
 ws-proxy &
